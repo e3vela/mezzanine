@@ -1,4 +1,5 @@
 
+from django.contrib.sites.models import Site
 from django.contrib.contenttypes.generic import GenericForeignKey
 from django.core.exceptions import ObjectDoesNotExist
 from django.db import models
@@ -31,7 +32,7 @@ class SiteRelated(models.Model):
     class Meta:
         abstract = True
 
-    site = models.ForeignKey("sites.Site", editable=False)
+    sites = models.ManyToManyField("sites.Site")
 
     def save(self, update_site=False, *args, **kwargs):
         """
@@ -40,7 +41,11 @@ class SiteRelated(models.Model):
         to ``True``.
         """
         if update_site or not self.id:
-            self.site_id = current_site_id()
+            # need an id to assign m2m
+            if not self.id:
+                super(SiteRelated, self).save(*args, **kwargs) 
+            current_site = Site.objects.get(pk=current_site_id())
+            self.sites.add(current_site)
         super(SiteRelated, self).save(*args, **kwargs)
 
 
