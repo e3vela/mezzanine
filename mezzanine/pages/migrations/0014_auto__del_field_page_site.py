@@ -8,32 +8,15 @@ from django.db import models
 class Migration(SchemaMigration):
 
     def forwards(self, orm):
-
-        # Adding M2M table for field sites on 'Page'
-        db.create_table('pages_page_sites', (
-            ('id', models.AutoField(verbose_name='ID', primary_key=True, auto_created=True)),
-            ('page', models.ForeignKey(orm['pages.page'], null=False)),
-            ('site', models.ForeignKey(orm['sites.site'], null=False))
-        ))
-        db.create_unique('pages_page_sites', ['page_id', 'site_id'])
-        
-        # copy ForeignKey to m2m
-        if not db.dry_run:
-            for page in orm.Page.objects.all():
-                page.sites.add(page.site)
-                page.save()
-                
         # Deleting field 'Page.site'
         db.delete_column('pages_page', 'site_id')
+
 
     def backwards(self, orm):
         # Adding field 'Page.site'
         db.add_column('pages_page', 'site',
                       self.gf('django.db.models.fields.related.ForeignKey')(default=1, to=orm['sites.Site']),
                       keep_default=False)
-
-        # Removing M2M table for field sites on 'Page'
-        db.delete_table('pages_page_sites')
 
 
     models = {
@@ -79,7 +62,6 @@ class Migration(SchemaMigration):
             'parent': ('django.db.models.fields.related.ForeignKey', [], {'blank': 'True', 'related_name': "'children'", 'null': 'True', 'to': "orm['pages.Page']"}),
             'publish_date': ('django.db.models.fields.DateTimeField', [], {'null': 'True', 'blank': 'True'}),
             'short_url': ('django.db.models.fields.URLField', [], {'max_length': '200', 'null': 'True', 'blank': 'True'}),
-            'site': ('django.db.models.fields.related.ForeignKey', [], {'to': "orm['sites.Site']"}),
             'sites': ('django.db.models.fields.related.ManyToManyField', [], {'to': "orm['sites.Site']", 'symmetrical': 'False'}),
             'slug': ('django.db.models.fields.CharField', [], {'max_length': '2000', 'null': 'True', 'blank': 'True'}),
             'status': ('django.db.models.fields.IntegerField', [], {'default': '2'}),

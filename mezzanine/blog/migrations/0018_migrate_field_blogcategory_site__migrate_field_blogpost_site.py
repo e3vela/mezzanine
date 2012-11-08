@@ -22,9 +22,6 @@ class Migration(SchemaMigration):
                 cat.sites.add(cat.site)
                 cat.save()
 
-        # Deleting field 'BlogCategory.site'
-        db.delete_column('blog_blogcategory', 'site_id')
-
         # Adding M2M table for field sites on 'BlogPost'
         db.create_table('blog_blogpost_sites', (
             ('id', models.AutoField(verbose_name='ID', primary_key=True, auto_created=True)),
@@ -39,22 +36,9 @@ class Migration(SchemaMigration):
                 post.sites.add(post.site)
                 post.save()
 
-        # Deleting field 'BlogPost.site'
-        db.delete_column('blog_blogpost', 'site_id')
-
     def backwards(self, orm):
-        # Adding field 'BlogCategory.site'
-        db.add_column('blog_blogcategory', 'site',
-                      self.gf('django.db.models.fields.related.ForeignKey')(default=1, to=orm['sites.Site']),
-                      keep_default=False)
-
         # Removing M2M table for field sites on 'BlogCategory'
         db.delete_table('blog_blogcategory_sites')
-
-        # Adding field 'BlogPost.site'
-        db.add_column('blog_blogpost', 'site',
-                      self.gf('django.db.models.fields.related.ForeignKey')(default=1, to=orm['sites.Site']),
-                      keep_default=False)
 
         # Removing M2M table for field sites on 'BlogPost'
         db.delete_table('blog_blogpost_sites')

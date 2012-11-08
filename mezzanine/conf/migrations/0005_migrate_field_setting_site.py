@@ -22,15 +22,7 @@ class Migration(SchemaMigration):
                 set.sites.add(set.site)
                 set.save()
 
-        # Deleting field 'Setting.site'
-        db.delete_column('conf_setting', 'site_id')
-
     def backwards(self, orm):
-        # Adding field 'Setting.site'
-        db.add_column('conf_setting', 'site',
-                      self.gf('django.db.models.fields.related.ForeignKey')(default=1, to=orm['sites.Site']),
-                      keep_default=False)
-
         # Removing M2M table for field sites on 'Setting'
         db.delete_table('conf_setting_sites')
 

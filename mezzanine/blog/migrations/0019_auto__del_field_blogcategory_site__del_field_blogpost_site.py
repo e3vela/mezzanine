@@ -8,31 +8,23 @@ from django.db import models
 class Migration(SchemaMigration):
 
     def forwards(self, orm):
-        # Adding M2M table for field sites on 'Keyword'
-        db.create_table('generic_keyword_sites', (
-            ('id', models.AutoField(verbose_name='ID', primary_key=True, auto_created=True)),
-            ('keyword', models.ForeignKey(orm['generic.keyword'], null=False)),
-            ('site', models.ForeignKey(orm['sites.site'], null=False))
-        ))
-        db.create_unique('generic_keyword_sites', ['keyword_id', 'site_id'])
+        # Deleting field 'BlogCategory.site'
+        db.delete_column('blog_blogcategory', 'site_id')
 
-        # copy ForeignKey to m2m
-        if not db.dry_run:
-            for keyword in orm.Keyword.objects.all():
-                keyword.sites.add(keyword.site)
-                keyword.save()
+        # Deleting field 'BlogPost.site'
+        db.delete_column('blog_blogpost', 'site_id')
 
-        # Deleting field 'Keyword.site'
-        db.delete_column('generic_keyword', 'site_id')
 
     def backwards(self, orm):
-        # Adding field 'Keyword.site'
-        db.add_column('generic_keyword', 'site',
+        # Adding field 'BlogCategory.site'
+        db.add_column('blog_blogcategory', 'site',
                       self.gf('django.db.models.fields.related.ForeignKey')(default=1, to=orm['sites.Site']),
                       keep_default=False)
 
-        # Removing M2M table for field sites on 'Keyword'
-        db.delete_table('generic_keyword_sites')
+        # Adding field 'BlogPost.site'
+        db.add_column('blog_blogpost', 'site',
+                      self.gf('django.db.models.fields.related.ForeignKey')(default=1, to=orm['sites.Site']),
+                      keep_default=False)
 
 
     models = {
@@ -64,6 +56,40 @@ class Migration(SchemaMigration):
             'password': ('django.db.models.fields.CharField', [], {'max_length': '128'}),
             'user_permissions': ('django.db.models.fields.related.ManyToManyField', [], {'to': "orm['auth.Permission']", 'symmetrical': 'False', 'blank': 'True'}),
             'username': ('django.db.models.fields.CharField', [], {'unique': 'True', 'max_length': '30'})
+        },
+        'blog.blogcategory': {
+            'Meta': {'object_name': 'BlogCategory'},
+            'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
+            'sites': ('django.db.models.fields.related.ManyToManyField', [], {'to': "orm['sites.Site']", 'symmetrical': 'False'}),
+            'slug': ('django.db.models.fields.CharField', [], {'max_length': '2000', 'null': 'True', 'blank': 'True'}),
+            'title': ('django.db.models.fields.CharField', [], {'max_length': '500'})
+        },
+        'blog.blogpost': {
+            'Meta': {'ordering': "('-publish_date',)", 'object_name': 'BlogPost'},
+            '_meta_title': ('django.db.models.fields.CharField', [], {'max_length': '500', 'null': 'True', 'blank': 'True'}),
+            'allow_comments': ('django.db.models.fields.BooleanField', [], {'default': 'True'}),
+            'categories': ('django.db.models.fields.related.ManyToManyField', [], {'symmetrical': 'False', 'related_name': "'blogposts'", 'blank': 'True', 'to': "orm['blog.BlogCategory']"}),
+            'comments': ('mezzanine.generic.fields.CommentsField', [], {'object_id_field': "'object_pk'", 'to': "orm['generic.ThreadedComment']", 'frozen_by_south': 'True'}),
+            'comments_count': ('django.db.models.fields.IntegerField', [], {'default': '0'}),
+            'content': ('mezzanine.core.fields.RichTextField', [], {}),
+            'description': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
+            'expiry_date': ('django.db.models.fields.DateTimeField', [], {'null': 'True', 'blank': 'True'}),
+            'featured_image': ('mezzanine.core.fields.FileField', [], {'max_length': '255', 'null': 'True', 'blank': 'True'}),
+            'gen_description': ('django.db.models.fields.BooleanField', [], {'default': 'True'}),
+            'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
+            'keywords': ('mezzanine.generic.fields.KeywordsField', [], {'object_id_field': "'object_pk'", 'to': "orm['generic.AssignedKeyword']", 'frozen_by_south': 'True'}),
+            'keywords_string': ('django.db.models.fields.CharField', [], {'max_length': '500', 'blank': 'True'}),
+            'publish_date': ('django.db.models.fields.DateTimeField', [], {'null': 'True', 'blank': 'True'}),
+            'rating': ('mezzanine.generic.fields.RatingField', [], {'object_id_field': "'object_pk'", 'to': "orm['generic.Rating']", 'frozen_by_south': 'True'}),
+            'rating_average': ('django.db.models.fields.FloatField', [], {'default': '0'}),
+            'rating_count': ('django.db.models.fields.IntegerField', [], {'default': '0'}),
+            'related_posts': ('django.db.models.fields.related.ManyToManyField', [], {'related_name': "'related_posts_rel_+'", 'blank': 'True', 'to': "orm['blog.BlogPost']"}),
+            'short_url': ('django.db.models.fields.URLField', [], {'max_length': '200', 'null': 'True', 'blank': 'True'}),
+            'sites': ('django.db.models.fields.related.ManyToManyField', [], {'to': "orm['sites.Site']", 'symmetrical': 'False'}),
+            'slug': ('django.db.models.fields.CharField', [], {'max_length': '2000', 'null': 'True', 'blank': 'True'}),
+            'status': ('django.db.models.fields.IntegerField', [], {'default': '2'}),
+            'title': ('django.db.models.fields.CharField', [], {'max_length': '500'}),
+            'user': ('django.db.models.fields.related.ForeignKey', [], {'related_name': "'blogposts'", 'to': "orm['auth.User']"})
         },
         'comments.comment': {
             'Meta': {'ordering': "('submit_date',)", 'object_name': 'Comment', 'db_table': "'django_comments'"},
@@ -99,7 +125,6 @@ class Migration(SchemaMigration):
         'generic.keyword': {
             'Meta': {'object_name': 'Keyword'},
             'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
-            'site': ('django.db.models.fields.related.ForeignKey', [], {'to': "orm['sites.Site']"}),
             'sites': ('django.db.models.fields.related.ManyToManyField', [], {'to': "orm['sites.Site']", 'symmetrical': 'False'}),
             'slug': ('django.db.models.fields.CharField', [], {'max_length': '2000', 'null': 'True', 'blank': 'True'}),
             'title': ('django.db.models.fields.CharField', [], {'max_length': '500'})
@@ -125,4 +150,4 @@ class Migration(SchemaMigration):
         }
     }
 
-    complete_apps = ['generic']
+    complete_apps = ['blog']
