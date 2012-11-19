@@ -36,6 +36,7 @@ class BlogPostAdmin(DisplayableAdmin, OwnableAdmin):
         """
         OwnableAdmin.save_form(self, request, form, change)
         return DisplayableAdmin.save_form(self, request, form, change)
+
     def get_form(self, request, obj=None, **kwargs):
         if request.user.has_perm('blog.can_modify_sites'):
             self.readonly_fields = []
