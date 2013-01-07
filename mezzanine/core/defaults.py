@@ -44,6 +44,15 @@ register_setting(
 )
 
 register_setting(
+    name="AKISMET_API_KEY",
+    label=_("Akismet API Key"),
+    description=_("Key for http://akismet.com spam filtering service. Used "
+        "for filtering comments and forms."),
+    editable=True,
+    default="",
+)
+
+register_setting(
     name="CACHE_SET_DELAY_SECONDS",
     description=_("Mezzanine's caching uses a technique know as mint "
         "caching. This is where the requested expiry for a cache entry "
@@ -56,15 +65,6 @@ register_setting(
         "cache entry."),
     editable=False,
     default=30,
-)
-
-register_setting(
-    name="AKISMET_API_KEY",
-    label=_("Akismet API Key"),
-    description=_("Key for http://akismet.com spam filtering service. Used "
-        "for filtering comments and forms."),
-    editable=True,
-    default="",
 )
 
 if "mezzanine.blog" in settings.INSTALLED_APPS:
@@ -180,6 +180,18 @@ register_setting(
 )
 
 register_setting(
+    name="OWNABLE_MODELS_ALL_EDITABLE",
+    description=_("Models that subclass ``Ownable`` and use the "
+        "``OwnableAdmin`` have their admin change-list records filtered "
+        "down to records owned by the current user. This setting contains a "
+        "sequence of models in the format ``app_label.object_name``, that "
+        "when subclassing ``Ownable``, will still show all records in the "
+        "admin change-list interface, regardless of the current user."),
+    editable=False,
+    default=(),
+)
+
+register_setting(
     name="RICHTEXT_WIDGET_CLASS",
     description=_("Dotted package path and class name of the widget to use "
         "for the ``RichTextField``."),
@@ -271,6 +283,16 @@ register_setting(
 )
 
 register_setting(
+    name="SEARCH_MODEL_CHOICES",
+    description=_("Sequence of models that will be provided by default as "
+        "choices in the search form. Each model should be in the format "
+        "``app_label.model_name``. Only models that subclass "
+        "``mezzanine.core.models.Displayable`` should be used."),
+    editable=False,
+    default=("pages.Page", "blog.BlogPost"),
+)
+
+register_setting(
     name="SEARCH_PER_PAGE",
     label=_("Search results per page"),
     description=_("Number of results shown in the search results page."),
@@ -315,6 +337,19 @@ register_setting(
         "Django's slugify function, or something of your own if required."),
     editable=False,
     default="mezzanine.utils.urls.slugify_unicode",
+)
+
+register_setting(
+    name="SPAM_FILTERS",
+    description=_("Sequence of dotted Python paths to callable functions "
+        "used for checking posted content (such as forms or comments) is "
+        "spam. Each function should accept three arguments: the request "
+        "object, the form object, and the URL that was posted from. "
+        "Defaults to ``mezzanine.utils.views.is_spam_akismet`` which will "
+        "use the http://akismet.com spam filtering service when the "
+        "``AKISMET_API_KEY`` setting is configured."),
+    editable=False,
+    default=("mezzanine.utils.views.is_spam_akismet",),
 )
 
 register_setting(
@@ -451,6 +486,16 @@ register_setting(
         "``RICHTEXT_WIDGET_CLASS`` is used."),
     editable=False,
     default="mezzanine/js/tinymce_setup.js",
+)
+
+register_setting(
+    name="UPLOAD_TO_HANDLERS",
+    description=_("Dict mapping file field names in the format "
+        "``app_label.model_name.field_name`` to the Python dotted path "
+        "to function names that will be used for the file field's "
+        "``upload_to`` argument."),
+    editable=False,
+    default={},
 )
 
 # The following settings are defined here for documentation purposes

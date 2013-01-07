@@ -1,4 +1,7 @@
+
 from django.contrib import admin
+from django.contrib.auth.admin import UserAdmin
+from django.contrib.auth.models import User
 from django.db.models import AutoField
 from django.forms import ValidationError
 from django.http import HttpResponseRedirect
@@ -7,7 +10,8 @@ from django.utils.translation import ugettext_lazy as _
 
 from mezzanine.conf import settings
 from mezzanine.core.forms import DynamicInlineAdminForm
-from mezzanine.core.models import CONTENT_STATUS_PUBLISHED, Orderable
+from mezzanine.core.models import (Orderable, SitePermission,
+                                   CONTENT_STATUS_PUBLISHED)
 from mezzanine.utils.urls import admin_url
 
 
@@ -30,7 +34,7 @@ class DisplayableAdmin(admin.ModelAdmin):
         (_("Meta data"), {
             "fields": ["_meta_title", "slug",
                        ("description", "gen_description"),
-                       "keywords"],
+                        "keywords", "in_sitemap"],
             "classes": ("collapse-closed",)
         }),
     )
@@ -130,10 +134,19 @@ class OwnableAdmin(admin.ModelAdmin):
     def queryset(self, request):
         """
         Filter the change list by currently logged in user if not a
-        superuser.
+        superuser. We also skip filtering if the model for this admin
+        class has been added to the sequence in the setting
+        ``OWNABLE_MODELS_ALL_EDITABLE``, which contains models in the
+        format ``app_label.object_name``, and allows models subclassing
+        ``Ownable`` to be excluded from filtering, eg: ownership should
+        not imply permission to edit.
         """
+        opts = self.model._meta
+        model_name = ("%s.%s" % (opts.app_label, opts.object_name)).lower()
+        models_all_editable = settings.OWNABLE_MODELS_ALL_EDITABLE
+        models_all_editable = [m.lower() for m in models_all_editable]
         qs = super(OwnableAdmin, self).queryset(request)
-        if request.user.is_superuser:
+        if request.user.is_superuser or model_name in models_all_editable:
             return qs
         return qs.filter(user__id=request.user.id)
 
@@ -192,3 +205,20 @@ class SingletonAdmin(admin.ModelAdmin):
         kwargs["extra_context"]["singleton"] = self.model.objects.count() == 1
         response = super(SingletonAdmin, self).change_view(*args, **kwargs)
         return self.handle_save(args[0], response)
+
+
+###########################################
+# Site Permissions Inlines for User Admin #
+###########################################
+
+class SitePermissionInline(admin.TabularInline):
+    model = SitePermission
+    max_num = 1
+    can_delete = False
+
+
+class SitePermissionUserAdmin(UserAdmin):
+    inlines = [SitePermissionInline]
+
+admin.site.unregister(User)
+admin.site.register(User, SitePermissionUserAdmin)

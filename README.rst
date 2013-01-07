@@ -155,6 +155,20 @@ Please note the following guidelines for contributing:
   * If you are adding new functionality, you must include basic tests
     and documentation.
 
+If you want to do development with mezzanine, here's a quick way to set
+up a development environment and run the unit tests, using
+`virtualenvwrapper`_ to set up a virtualenv::
+
+    $ mkvirtualenv mezzanine
+    $ workon mezzanine
+    $ pip install Django pep8 pyflakes
+    $ git clone https://github.com/stephenmcd/mezzanine/
+    $ cd mezzanine
+    $ python setup.py develop
+    $ cp mezzanine/project_template/local_settings.py.template mezzanine/project_template/local_settings.py
+    $ ./mezzanine/project_template/manage.py test
+
+
 Language Translations
 =====================
 
@@ -195,6 +209,14 @@ You can also add modules to the `Mezzanine Grid on djangopackages.com`_.
     via Google Maps, iCalendar files, webcal URLs and directions via
     Google Calendar/Maps.
   * `mezzanine-polls`_ - Polls application for Mezzanine.
+  * `mezzanine-pagedown`_ - Adds the `Pagedown`_ WYSIWYG editor to
+    Mezzanine.
+  * `mezzanine-careers`_ - Job posting application for Mezzanine.
+  * `mezzanine-recipes`_ - Recipes plugin with built-in REST API.
+  * `mezzanine-slides`_ - Responsive banner slides app for Mezzanine.
+  * `mezzyblocks`_ - Another app for adding blocks/modules to Mezzanine.
+  * `mezzanine-flexipage`_ - Allows designers to manage content areas
+    in templates.
 
 Donating
 ========
@@ -315,6 +337,24 @@ Sites Using Mezzanine
   * `Creuna (com/dk/fi/no/se) <http://www.creuna.com/>`_
   * `Coronado School of the Arts <http://www.cosasandiego.com/>`_
   * `SiteComb <http://www.sitecomb.com>`_
+  * `Dashing Collective <http://dashing.tv/>`_
+  * `Puraforce Remedies <http://puraforceremedies.com/>`_
+  * `Google's VetNet <http://www.vetnethq.com/>`_
+  * `1800RESPECT <http://www.1800respect.org.au/>`_
+  * `Evenhouse Consulting <http://evenhouseconsulting.com/>`_
+  * `Humboldt Community Christian School <http://humboldtccs.org>`_
+  * `Atlanta's Living Legacy <http://gradyhistory.com>`_
+  * `Shipgistix <http://shipgistix.com>`_
+  * `Yuberactive <http://www.yuberactive.asia>`_
+  * `Medical Myth Busters <http://pogromcymitowmedycznych.pl>`_
+  * `4player Network <http://4playernetwork.com/>`_
+  * `Top500 Supercomputers <http://top500.org>`_
+  * `Die Betroffenen <http://www.zeichnemit.de>`_
+  * `uvena.de <http://uvena.de>`_
+  * `ezless.com <http://ezless.com>`_
+  * `Dominican Python <http://python.do>`_
+  * `Stackful.io <http://stackful.io/>`_
+  * `Adrenaline <http://www.adrln.com/>`_
 
 Quotes
 ======
@@ -402,6 +442,7 @@ Quotes
 .. _`Tabblo`: http://www.tabblo.com/
 .. _`The Linux Journal`: http://www.linuxjournal.com
 .. _`Work For Pie`: http://workforpie.com/
+.. _`virtualenvwrapper`: http://www.doughellmann.com/projects/virtualenvwrapper
 
 
 .. THIRD PARTY LIBS
@@ -422,6 +463,13 @@ Quotes
 .. _`mezzanine-bookmarks`: https://github.com/adieu/mezzanine-bookmarks
 .. _`mezzanine-events`: https://github.com/stbarnabas/mezzanine-events
 .. _`mezzanine-polls`: https://github.com/sebasmagri/mezzanine_polls
+.. _`mezzanine-pagedown`: https://bitbucket.org/akhayyat/mezzanine-pagedown
+.. _`PageDown`: https://code.google.com/p/pagedown/
+.. _`mezzanine-careers`: https://github.com/mogga/mezzanine-careers
+.. _`mezzanine-recipes`: https://github.com/tjetzinger/mezzanine-recipes
+.. _`mezzanine-slides`: https://github.com/overshard/mezzanine-slides
+.. _`mezzyblocks`: https://github.com/jardaroh/mezzyblocks
+.. _`mezzanine-flexipage`: https://github.com/mrmagooey/mezzanine-flexipage
 
 
 .. PEOPLE WITH QUOTES

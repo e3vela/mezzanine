@@ -1,5 +1,6 @@
 
 import os
+import re
 import sys
 from functools import wraps
 from getpass import getpass, getuser
@@ -212,6 +213,8 @@ def upload_template_and_reload(name):
             remote_data = sudo("cat %s" % remote_path, show=False)
     with open(local_path, "r") as f:
         local_data = f.read()
+        # Escape all non-string-formatting-placeholder occurrences of '%':
+        local_data = re.sub(r"%(?!\(\w+\)s)", "%%", local_data)
         if "%(db_pass)s" in local_data:
             env.db_pass = db_pass()
         local_data %= env
@@ -390,8 +393,8 @@ def create():
                 sudo("openssl req -new -x509 -nodes -out %s -keyout %s "
                      "-subj '/CN=%s' -days 3650" % parts)
             else:
-                upload_template(crt_file, crt_local, use_sudo=True)
-                upload_template(key_file, key_local, use_sudo=True)
+                upload_template(crt_local, crt_file, use_sudo=True)
+                upload_template(key_local, key_file, use_sudo=True)
 
     # Set up project.
     upload_template_and_reload("settings")

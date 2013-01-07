@@ -10,11 +10,13 @@ from django.contrib.sites.models import Site
 from django.core.files import File
 from django.core.files.storage import default_storage
 from django.core.urlresolvers import reverse, NoReverseMatch
-from django.db.models import Model
+from django.db.models import Model, get_model
+
 from django.template import (Context, Node, TextNode, Template,
                              TemplateSyntaxError, TOKEN_TEXT, TOKEN_VAR,
                              TOKEN_COMMENT, TOKEN_BLOCK)
 
+from django.template.defaultfilters import escape
 from django.template.loader import get_template
 from django.utils.html import strip_tags
 from django.utils.simplejson import loads
@@ -34,7 +36,7 @@ from mezzanine.core.forms import get_edit_form
 from mezzanine.utils.cache import nevercache_token, cache_installed
 from mezzanine.utils.html import decode_entities
 from mezzanine.utils.importing import import_dotted_path
-from mezzanine.utils.sites import current_site_id
+from mezzanine.utils.sites import current_site_id, has_site_permission
 from mezzanine.utils.urls import admin_url
 from mezzanine.utils.views import is_editable
 from mezzanine import template
@@ -195,7 +197,7 @@ def metablock(parsed):
     Remove HTML tags, entities and superfluous characters from meta blocks.
     """
     parsed = " ".join(parsed.replace("\n", "").split()).replace(" ,", ",")
-    return strip_tags(decode_entities(parsed))
+    return escape(strip_tags(decode_entities(parsed)))
 
 
 @register.inclusion_tag("includes/pagination.html", takes_context=True)
@@ -209,6 +211,31 @@ def pagination_for(context, current_page):
         del querystring["page"]
     querystring = querystring.urlencode()
     return {"current_page": current_page, "querystring": querystring}
+
+
+@register.inclusion_tag("includes/search_form.html", takes_context=True)
+def search_form(context, search_model_names=None):
+    """
+    Includes the search form with a list of models to use as choices for
+    filtering the search by. Models should be a string with models in the
+    format ``app_label.model_name`` separated by spaces. The string ``all``
+    can also be used, in which case the models defined by the
+    ``SEARCH_MODEL_CHOICES`` setting will be used.
+    """
+    if not search_model_names:
+        search_model_names = []
+    elif search_model_names == "all":
+        search_model_names = list(settings.SEARCH_MODEL_CHOICES)
+    else:
+        search_model_names = search_model_names.split(" ")
+    search_model_choices = []
+    for model_name in search_model_names:
+        model = get_model(*model_name.split(".", 1))
+        if model:  # Might not be installed.
+            verbose_name = model._meta.verbose_name_plural.capitalize()
+            search_model_choices.append((verbose_name, model_name))
+    context["search_model_choices"] = search_model_choices
+    return context
 
 
 @register.simple_tag
@@ -303,10 +330,13 @@ def editable_loader(context):
     """
     Set up the required JS/CSS for the in-line editing toolbar and controls.
     """
-    t = get_template("includes/editable_toolbar.html")
-    context["REDIRECT_FIELD_NAME"] = REDIRECT_FIELD_NAME
-    context["toolbar"] = t.render(Context(context))
-    context["richtext_media"] = RichTextField().formfield().widget.media
+    user = context["request"].user
+    context["has_site_permission"] = has_site_permission(user)
+    if context["has_site_permission"]:
+        t = get_template("includes/editable_toolbar.html")
+        context["REDIRECT_FIELD_NAME"] = REDIRECT_FIELD_NAME
+        context["toolbar"] = t.render(Context(context))
+        context["richtext_media"] = RichTextField().formfield().widget.media
     return context
 
 
@@ -476,7 +506,11 @@ def admin_dropdown_menu(context):
     Renders the app list for the admin dropdown menu navigation.
     """
     context["dropdown_menu_app_list"] = admin_app_list(context["request"])
-    context["dropdown_menu_sites"] = list(Site.objects.all())
+    user = context["request"].user
+    if user.is_superuser:
+        context["dropdown_menu_sites"] = list(Site.objects.all())
+    else:
+        context["dropdown_menu_sites"] = list(user.sitepermission.sites.all())
     context["dropdown_menu_selected_site_id"] = current_site_id()
     return context
 

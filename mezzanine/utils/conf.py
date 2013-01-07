@@ -34,8 +34,7 @@ def set_dynamic_settings(s):
     s["TESTING"] = management_command.startswith("test")
     # Some kind of development server is running via runserver,
     # runserver_plus or harvest (lettuce)
-    s["DEV_SERVER"] = management_command.startswith("runserver") or \
-                      management_command == "harvest"
+    s["DEV_SERVER"] = management_command.startswith(("runserver", "harvest"))
     # Change tuple settings to lists for easier manipulation.
     s["INSTALLED_APPS"] = list(s["INSTALLED_APPS"])
     s["MIDDLEWARE_CLASSES"] = list(s["MIDDLEWARE_CLASSES"])
@@ -53,6 +52,11 @@ def set_dynamic_settings(s):
     if s["TESTING"]:
         # Enable accounts when testing so the URLs exist.
         append("INSTALLED_APPS", "mezzanine.accounts")
+        # New Django 1.5 tests in redirects app don't work with a
+        # catch-all urlpattern such as Mezzanine's pages app.
+        remove("INSTALLED_APPS", "django.contrib.redirects")
+        remove("MIDDLEWARE_CLASSES",
+            "django.contrib.redirects.middleware.RedirectFallbackMiddleware")
     else:
         # Setup for optional apps.
         optional = list(s.get("OPTIONAL_APPS", []))
@@ -71,8 +75,20 @@ def set_dynamic_settings(s):
     if "debug_toolbar" in s["INSTALLED_APPS"]:
         debug_mw = "debug_toolbar.middleware.DebugToolbarMiddleware"
         prepend("MIDDLEWARE_CLASSES", debug_mw)
+    # If compressor installed, ensure it's configured and make
+    # Mezzanine's settings available to its offline context,
+    # since jQuery is configured via a setting.
     if "compressor" in s["INSTALLED_APPS"]:
         append("STATICFILES_FINDERS", "compressor.finders.CompressorFinder")
+        s.setdefault("COMPRESS_OFFLINE_CONTEXT", {
+            "MEDIA_URL": s.get("MEDIA_URL", ""),
+            "STATIC_URL": s.get("STATIC_URL", ""),
+        })
+
+        def mezzanine_settings():
+            from mezzanine.conf import settings
+            return settings
+        s["COMPRESS_OFFLINE_CONTEXT"]["settings"] = mezzanine_settings
 
     # Ensure the Mezzanine auth backend is enabled if
     # mezzanine.accounts is being used.
