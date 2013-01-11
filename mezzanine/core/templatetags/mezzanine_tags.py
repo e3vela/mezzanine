@@ -109,6 +109,22 @@ def fields_for(context, form):
 
 
 @register.filter
+def sort_by(items, attr):
+    """
+    General sort filter - sorts by either attribute or key.
+    """
+    def key_func(item):
+        try:
+            return getattr(item, attr)
+        except AttributeError:
+            try:
+                return item[attr]
+            except TypeError:
+                getattr(item, attr)  # Reraise AttributeError
+    return sorted(items, key=key_func)
+
+
+@register.filter
 def is_installed(app_name):
     """
     Returns ``True`` if the given app name is in the
@@ -234,7 +250,7 @@ def search_form(context, search_model_names=None):
         if model:  # Might not be installed.
             verbose_name = model._meta.verbose_name_plural.capitalize()
             search_model_choices.append((verbose_name, model_name))
-    context["search_model_choices"] = search_model_choices
+    context["search_model_choices"] = sorted(search_model_choices)
     return context
 
 

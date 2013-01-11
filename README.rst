@@ -297,7 +297,6 @@ Sites Using Mezzanine
   * `Enrico Tröger <http://www.uvena.de>`_
   * `Matthe Wahn <http://www.matthewahn.com>`_
   * `Bit of Pixels <http://bitofpixels.com>`_
-  * `Nimbis Services <http://schott.nimbis.net>`_
   * `European Crystallographic Meeting <http://ecm29.ecanews.org>`_
   * `Dreamperium <http://dreamperium.com>`_
   * `UT Dallas <http://utdallasiia.com>`_
@@ -355,6 +354,7 @@ Sites Using Mezzanine
   * `Dominican Python <http://python.do>`_
   * `Stackful.io <http://stackful.io/>`_
   * `Adrenaline <http://www.adrln.com/>`_
+  * `ACE EdVenture Programme <http://aceedventure.com/>`_
 
 Quotes
 ======
