@@ -8,10 +8,11 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Mezzanine\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2012-11-17 16:51-0430\n"
+"POT-Creation-Date: 2013-04-07 10:40-0430\n"
 "PO-Revision-Date: 2012-09-06 08:21+0000\n"
 "Last-Translator: Nicola Larosa <transifex@teknico.net>\n"
-"Language-Team: Italian (http://www.transifex.com/projects/p/mezzanine/language/it/)\n"
+"Language-Team: Italian (http://www.transifex.com/projects/p/mezzanine/"
+"language/it/)\n"
 "Language: it\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
@@ -34,15 +35,15 @@ msgstr "Errore"
 msgid "Sorry, an error occurred."
 msgstr "Spiacenti, si è verificato un errore."
 
-#: templates/mobile/base.html:31 templates/mobile/index.html:6
+#: templates/mobile/base.html:41 templates/mobile/index.html:6
 msgid "Home"
 msgstr "Pagina principale"
 
-#: templates/mobile/base.html:43
+#: templates/mobile/base.html:53
 msgid "Powered by"
 msgstr "Realizzato con"
 
-#: templates/mobile/base.html:44
+#: templates/mobile/base.html:54
 msgid "View Full Site"
 msgstr "Vedi il sito completo"
 
@@ -126,5 +127,9 @@ msgid "quotes"
 msgstr "citazioni"
 
 #: templates/mobile/includes/search.html:5
-msgid " for exact phrases, + to make a word or phrase required, and - to exclude a word or phrase."
-msgstr " per frasi esatte, + per rendere una parola o frase obbligatoria, e - per escludere una parola o frase."
+msgid ""
+" for exact phrases, + to make a word or phrase required, and - to exclude a "
+"word or phrase."
+msgstr ""
+" per frasi esatte, + per rendere una parola o frase obbligatoria, e - per "
+"escludere una parola o frase."

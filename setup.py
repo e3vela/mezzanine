@@ -6,6 +6,8 @@ import sys
 
 exclude = ["mezzanine/project_template/dev.db",
            "mezzanine/project_template/local_settings.py"]
+if sys.argv == ["setup.py", "test"]:
+    exclude = []
 exclude = dict([(e, None) for e in exclude])
 for e in exclude:
     if e.endswith(".py"):
@@ -25,11 +27,14 @@ from setuptools import setup, find_packages
 from mezzanine import __version__ as version
 
 install_requires = [
-    "django >= 1.3.3",
-    "filebrowser_safe >= 0.2.14",
-    "grappelli_safe >= 0.2.11",
+    "django >= 1.4, < 1.6",
+    "filebrowser_safe >= 0.2.27",
+    "grappelli_safe >= 0.2.22",
+    "html5lib == 0.95",
     "bleach",
     "pytz",
+    "requests==1.2.3",
+    "requests-oauthlib==0.3.2",
 ]
 
 try:
@@ -63,6 +68,8 @@ try:
             [console_scripts]
             mezzanine-project=mezzanine.bin.mezzanine_project:create_project
         """,
+        test_suite="runtests.runtests",
+        tests_require=["pyflakes==0.6.1", "pep8==1.4.1"],
         classifiers=[
             "Development Status :: 4 - Beta",
             "Environment :: Web Environment",

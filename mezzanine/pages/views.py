@@ -5,12 +5,9 @@ from django.http import HttpResponse, Http404
 from django.shortcuts import get_object_or_404
 
 from mezzanine.conf import settings
-from mezzanine.pages import page_processors
 from mezzanine.pages.models import Page
 from mezzanine.utils.urls import home_slug
 from mezzanine.utils.views import render
-
-page_processors.autodiscover()
 
 
 @staff_member_required
@@ -28,7 +25,10 @@ def admin_page_ordering(request):
     if new_parent_id != page.parent_id:
         # Parent changed - set the new parent and re-order the
         # previous siblings.
-        new_parent = Page.objects.get(id=new_parent_id)
+        if new_parent_id is not None:
+            new_parent = Page.objects.get(id=new_parent_id)
+        else:
+            new_parent = None
         page.set_parent(new_parent)
         pages = Page.objects.filter(parent_id=old_parent_id)
         for i, page in enumerate(pages.order_by('_order')):
@@ -78,7 +78,7 @@ def page(request, slug, template=u"pages/page.html", extra_context=None):
     if page.content_model is not None:
         templates.append(u"pages/%s/%s.html" % (template_name,
             page.content_model))
-    for parent in page.get_ascendants():
+    for parent in page.get_ascendants(for_user=request.user):
         parent_template_name = unicode(parent.slug)
         # Check for a template matching the page's content model.
         if page.content_model is not None:

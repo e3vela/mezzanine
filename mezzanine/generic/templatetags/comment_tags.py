@@ -8,6 +8,7 @@ from mezzanine import template
 from mezzanine.conf import settings
 from mezzanine.generic.forms import ThreadedCommentForm
 from mezzanine.generic.models import ThreadedComment
+from mezzanine.utils.importing import import_dotted_path
 
 
 register = template.Library()
@@ -47,16 +48,14 @@ def comment_thread(context, parent):
         for comment in comments_queryset.select_related("user"):
             comments[comment.replied_to_id].append(comment)
         context["all_comments"] = comments
-        parent = None
-    else:
-        parent = parent.id
+    parent_id = parent.id if isinstance(parent, ThreadedComment) else None
     try:
         replied_to = int(context["request"].POST["replied_to"])
     except KeyError:
         replied_to = 0
     context.update({
-        "comments_for_thread": context["all_comments"].get(parent, []),
-        "no_comments": parent is None and not comments,
+        "comments_for_thread": context["all_comments"].get(parent_id, []),
+        "no_comments": parent_id is None and not context["all_comments"],
         "replied_to": replied_to,
     })
     return context
@@ -69,7 +68,7 @@ def recent_comments(context):
     Dashboard widget for displaying recent comments.
     """
     latest = context["settings"].COMMENTS_NUM_LATEST
-    comments = ThreadedComment.objects.all().select_related(depth=1)
+    comments = ThreadedComment.objects.all().select_related("user")
     context["comments"] = comments.order_by("-id")[:latest]
     return context
 
@@ -84,5 +83,8 @@ def comment_filter(comment_text):
     """
     filter_func = settings.COMMENT_FILTER
     if not filter_func:
-        filter_func = lambda s: linebreaksbr(urlize(s))
+        def filter_func(s):
+            return linebreaksbr(urlize(s, autoescape=True), autoescape=True)
+    elif not callable(filter_func):
+        filter_func = import_dotted_path(filter_func)
     return filter_func(comment_text)

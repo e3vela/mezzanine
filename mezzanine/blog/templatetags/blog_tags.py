@@ -1,13 +1,14 @@
 from datetime import datetime
 
-from django.contrib.auth.models import User
 from django.db.models import Count, Q
 
 from mezzanine.blog.forms import BlogPostForm
 from mezzanine.blog.models import BlogPost, BlogCategory
 from mezzanine.generic.models import Keyword
 from mezzanine import template
+from mezzanine.utils.models import get_user_model
 
+User = get_user_model()
 
 register = template.Library()
 
@@ -63,7 +64,7 @@ def blog_recent_posts(limit=5, tag=None, username=None, category=None):
         {% blog_recent_posts 5 username=admin as recent_posts %}
 
     """
-    blog_posts = BlogPost.objects.published()
+    blog_posts = BlogPost.objects.published().select_related("user")
     title_or_slug = lambda s: Q(title=s) | Q(slug=s)
     if tag is not None:
         try:

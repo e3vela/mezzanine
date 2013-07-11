@@ -1,3 +1,8 @@
+try:
+    from urllib.parse import urljoin
+except ImportError:     # Python 2
+    from urlparse import urljoin
+
 from django.core.urlresolvers import resolve, reverse
 from django.db import models
 from django.utils.translation import ugettext_lazy as _
@@ -54,8 +59,7 @@ class Page(BasePage):
         slug = self.slug
         if self.content_model == "link":
             # Ensure the URL is absolute.
-            if not slug.lower().startswith("http"):
-                slug = "/" + self.slug.lstrip("/")
+            slug = urljoin('/', slug)
             return slug
         if slug == "/":
             return reverse("home")
@@ -162,18 +166,28 @@ class Page(BasePage):
         Change the parent of this page, changing this page's slug to match
         the new parent if necessary.
         """
+        self_slug = self.slug
         old_parent_slug = self.parent.slug if self.parent else ""
         new_parent_slug = new_parent.slug if new_parent else ""
+
+        # Make sure setting the new parent won't cause a cycle.
+        parent = new_parent
+        while parent is not None:
+            if parent.pk == self.pk:
+                raise AttributeError("You can't set a page or its child as"
+                                     " a parent.")
+            parent = parent.parent
 
         self.parent = new_parent
         self.save()
 
-        if not old_parent_slug:
-            self.set_slug("/".join((new_parent_slug, self.slug)))
-        elif self.slug.startswith(old_parent_slug):
-            new_slug = self.slug.replace(old_parent_slug,
-                                         new_parent_slug, 1)
-            self.set_slug(new_slug.strip("/"))
+        if self_slug:
+            if not old_parent_slug:
+                self.set_slug("/".join((new_parent_slug, self.slug)))
+            elif self.slug.startswith(old_parent_slug):
+                new_slug = self.slug.replace(old_parent_slug,
+                                             new_parent_slug, 1)
+                self.set_slug(new_slug.strip("/"))
 
     def overridden(self):
         """

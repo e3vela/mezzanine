@@ -2,10 +2,12 @@
 import re
 import unicodedata
 
-from django.core.urlresolvers import resolve, reverse, NoReverseMatch, \
-    get_script_prefix
+from django.core.exceptions import ObjectDoesNotExist
+from django.core.urlresolvers import (resolve, reverse, NoReverseMatch,
+                                      get_script_prefix)
 from django.shortcuts import redirect
 from django.utils.encoding import smart_unicode
+from django.utils import translation
 
 from mezzanine.conf import settings
 from mezzanine.utils.importing import import_dotted_path
@@ -63,6 +65,25 @@ def slugify_unicode(s):
     return re.sub("[-\s]+", "-", "".join(chars).strip()).lower()
 
 
+def unique_slug(queryset, slug_field, slug):
+    """
+    Ensures a slug is unique for the given queryset, appending
+    an integer to its end until the slug is unique.
+    """
+    i = 0
+    while True:
+        if i > 0:
+            if i > 1:
+                slug = slug.rsplit("-", 1)[0]
+            slug = "%s-%s" % (slug, i)
+        try:
+            queryset.get(**{slug_field: slug})
+        except ObjectDoesNotExist:
+            break
+        i += 1
+    return slug
+
+
 def login_redirect(request):
     """
     Returns the redirect response for login/signup. Favors:
@@ -86,10 +107,12 @@ def login_redirect(request):
 def path_to_slug(path):
     """
     Removes everything from the given URL path, including
-    ``PAGES_SLUG`` if it is set, returning a slug that would match a
-    ``Page`` instance's slug.
+    language code and ``PAGES_SLUG`` if any is set, returning
+    a slug that would match a ``Page`` instance's slug.
     """
     from mezzanine.urls import PAGES_SLUG
-    for prefix in (settings.SITE_PREFIX, PAGES_SLUG):
-        path = path.strip("/").replace(prefix, "", 1)
-    return path or "/"
+    lang_code = translation.get_language_from_path(path)
+    for prefix in (lang_code, settings.SITE_PREFIX, PAGES_SLUG):
+        if prefix:
+            path = path.replace(prefix, "", 1)
+    return path.strip("/") or "/"

@@ -4,7 +4,8 @@ from uuid import uuid4
 from django import forms
 from django.forms.extras.widgets import SelectDateWidget
 from django.utils.safestring import mark_safe
-from django.utils.translation import ugettext_lazy as _
+from django.utils.translation import ugettext as _
+from django.contrib.staticfiles.storage import staticfiles_storage
 
 from mezzanine.conf import settings
 from mezzanine.core.models import Orderable
@@ -34,6 +35,12 @@ class Html5Mixin(object):
                     self.fields[name].widget.attrs["required"] = ""
 
 
+_tinymce_js = ()
+if settings.GRAPPELLI_INSTALLED:
+    _path = "grappelli/tinymce/jscripts/tiny_mce/tiny_mce.js"
+    _tinymce_js = (staticfiles_storage.url(_path), settings.TINYMCE_SETUP_JS)
+
+
 class TinyMceWidget(forms.Textarea):
     """
     Setup the JS files and targetting CSS class for a textarea to
@@ -41,9 +48,7 @@ class TinyMceWidget(forms.Textarea):
     """
 
     class Media:
-        js = (settings.ADMIN_MEDIA_PREFIX +
-              "tinymce/jscripts/tiny_mce/tiny_mce.js",
-              settings.TINYMCE_SETUP_JS,)
+        js = _tinymce_js
 
     def __init__(self, *args, **kwargs):
         super(TinyMceWidget, self).__init__(*args, **kwargs)
@@ -57,8 +62,8 @@ class OrderWidget(forms.HiddenInput):
     """
     def render(self, *args, **kwargs):
         rendered = super(OrderWidget, self).render(*args, **kwargs)
-        arrows = ["<img src='%simg/admin/arrow-%s.gif' />" %
-            (settings.ADMIN_MEDIA_PREFIX, arrow) for arrow in ("up", "down")]
+        arrows = ["<img src='%sadmin/img/admin/arrow-%s.gif' />" %
+            (settings.STATIC_URL, arrow) for arrow in ("up", "down")]
         arrows = "<span class='ordering'>%s</span>" % "".join(arrows)
         return rendered + mark_safe(arrows)
 

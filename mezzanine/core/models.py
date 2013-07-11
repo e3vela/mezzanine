@@ -1,24 +1,26 @@
 
 from django.contrib.sites.models import Site
-from django.contrib.auth.models import User
+
 from django.contrib.contenttypes.generic import GenericForeignKey
-from django.core.exceptions import ObjectDoesNotExist
 from django.db import models
 from django.db.models.base import ModelBase
 from django.db.models.signals import post_save
 from django.template.defaultfilters import truncatewords_html
 from django.utils.html import strip_tags
 from django.utils.timesince import timesince
+from django.utils.timezone import now
 from django.utils.translation import ugettext, ugettext_lazy as _
 
 from mezzanine.core.fields import RichTextField
 from mezzanine.core.managers import DisplayableManager, CurrentSiteManager
 from mezzanine.generic.fields import KeywordsField
 from mezzanine.utils.html import TagCloser
-from mezzanine.utils.models import base_concrete_model
+from mezzanine.utils.models import base_concrete_model, get_user_model_name
 from mezzanine.utils.sites import current_site_id
-from mezzanine.utils.timezone import now
-from mezzanine.utils.urls import admin_url, slugify
+from mezzanine.utils.urls import admin_url, slugify, unique_slug
+
+
+user_model_name = get_user_model_name()
 
 
 class SiteRelated(models.Model):
@@ -77,20 +79,8 @@ class Slugged(SiteRelated):
         # For custom content types, use the ``Page`` instance for
         # slug lookup.
         concrete_model = base_concrete_model(Slugged, self)
-        i = 0
-        while True:
-            if i > 0:
-                if i > 1:
-                    self.slug = self.slug.rsplit("-", 1)[0]
-                self.slug = "%s-%s" % (self.slug, i)
-            qs = concrete_model.objects.all()
-            if self.id is not None:
-                qs = qs.exclude(id=self.id)
-            try:
-                qs.get(slug=self.slug)
-            except ObjectDoesNotExist:
-                break
-            i += 1
+        slug_qs = concrete_model.objects.exclude(id=self.id)
+        self.slug = unique_slug(slug_qs, "slug", self.slug)
         super(Slugged, self).save(*args, **kwargs)
 
     def get_slug(self):
@@ -210,7 +200,7 @@ class Displayable(Slugged, MetaData):
 
     def save(self, *args, **kwargs):
         """
-        Set default for ``publish_date``. We can't use ``auto_add`` on
+        Set default for ``publish_date``. We can't use ``auto_now_add`` on
         the field as it will be blank when a blog post is created from
         the quick blog form in the admin dashboard.
         """
@@ -341,7 +331,7 @@ class Orderable(models.Model):
         field = getattr(self.__class__, name)
         if isinstance(field, GenericForeignKey):
             names = (field.ct_field, field.fk_field)
-            return dict([(name, getattr(self, name)) for name in names])
+            return dict([(n, getattr(self, n)) for n in names])
         return {name: value}
 
     def save(self, *args, **kwargs):
@@ -403,7 +393,7 @@ class Ownable(models.Model):
     Abstract model that provides ownership of an object for a user.
     """
 
-    user = models.ForeignKey("auth.User", verbose_name=_("Author"),
+    user = models.ForeignKey(user_model_name, verbose_name=_("Author"),
         related_name="%(class)ss")
 
     class Meta:
@@ -422,14 +412,28 @@ class SitePermission(models.Model):
     used instead of ``User.is_staff``, for admin and inline-editing
     access.
     """
-    user = models.OneToOneField("auth.User")
-    sites = models.ManyToManyField("sites.Site", blank=True)
+
+    user = models.ForeignKey(user_model_name, verbose_name=_("Author"),
+        related_name="%(class)ss")
+    sites = models.ManyToManyField("sites.Site", blank=True,
+                                   verbose_name=_("Sites"))
+
+    class Meta:
+        verbose_name = _("Site permission")
+        verbose_name_plural = _("Site permissions")
 
 
 def create_site_permission(sender, **kw):
+    sender_name = "%s.%s" % (sender._meta.app_label, sender._meta.object_name)
+    if sender_name.lower() != user_model_name.lower():
+        return
     user = kw["instance"]
     if user.is_staff and not user.is_superuser:
         perm, created = SitePermission.objects.get_or_create(user=user)
         if created or perm.sites.count() < 1:
             perm.sites.add(current_site_id())
-post_save.connect(create_site_permission, sender=User)
+
+# We don't specify the user model here, because with 1.5's custom
+# user models, everything explodes. So we check the name of it in
+# the signal.
+post_save.connect(create_site_permission)
