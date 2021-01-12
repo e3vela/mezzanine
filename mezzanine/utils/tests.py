@@ -5,52 +5,47 @@ from _ast import PyCF_ONLY_AST
 import os
 from shutil import copyfile, copytree
 
+from django.contrib.auth import get_user_model
 from django.db import connection
 from django.template import Context, Template
 from django.test import TestCase as BaseTestCase
+from django.test.client import RequestFactory
 
 from mezzanine.conf import settings
 from mezzanine.utils.importing import path_for_import
-from mezzanine.utils.models import get_user_model
-
-
-User = get_user_model()
 
 
 # Ignore these warnings in pyflakes - if added to, please comment why.
 IGNORE_ERRORS = (
 
-    # local_settings import.
-    "'from local_settings import *' used",
-
     # Used to version subpackages.
-    "'__version__' imported but unused",
+    ".__version__' imported but unused",
 
-    # No caching fallback
+    # No caching fallback.
     "redefinition of function 'nevercache'",
 
-    # Dummy fallback in templates for django-compressor
+    # Dummy fallback in templates for django-compressor.
     "redefinition of function 'compress'",
 
-    # Fabic config fallback
+    # Fabic config fallback.
     "redefinition of unused 'conf'",
 
     # Fixing these would make the code ugiler IMO.
     "continuation line",
     "closing bracket does not match",
 
-    # Jython compatiblity
+    # Jython compatiblity.
     "redefinition of unused 'Image",
 
-    # Django 1.5 custom user compatibility
-    "redefinition of unused 'get_user_model",
+    # Django custom user compatibility.
+    "'get_user_model' imported but unused",
 
-    # Deprecated compat timezones for Django 1.3
-    "mezzanine/utils/timezone",
+    # lambdas are OK.
+    "do not assign a lambda",
 
-    # Actually a Python template file.
-    "live_settings.py",
-
+    # checks modules need to be imported to register check functions, they will
+    # be run by Django.
+    "'.checks' imported but unused"
 )
 
 
@@ -62,30 +57,32 @@ class TestCase(BaseTestCase):
 
     def setUp(self):
         """
-        Creates an admin user and sets up the debug cursor, so that
-        we can track the number of queries used in various places.
+        Creates an admin user, sets up the debug cursor, so that we can
+        track the number of queries used in various places, and creates
+        a request factory for views testing.
         """
         self._username = "test"
         self._password = "test"
         self._emailaddress = "example@example.com"
         args = (self._username, self._emailaddress, self._password)
-        self._user = User.objects.create_superuser(*args)
-        self._debug_cursor = connection.use_debug_cursor
-        connection.use_debug_cursor = True
+        self._user = get_user_model().objects.create_superuser(*args)
+        self._request_factory = RequestFactory()
+        self._debug_cursor = connection.force_debug_cursor
+        connection.force_debug_cursor = True
 
     def tearDown(self):
         """
         Clean up the admin user created and debug cursor.
         """
         self._user.delete()
-        connection.use_debug_cursor = self._debug_cursor
+        connection.force_debug_cursor = self._debug_cursor
 
     def queries_used_for_template(self, template, **context):
         """
         Return the number of queries used when rendering a template
         string.
         """
-        connection.queries = []
+        connection.queries_log.clear()
         t = Template(template)
         t.render(Context(context))
         return len(connection.queries)
@@ -138,8 +135,8 @@ def _run_checker_for_package(checker, package_name, extra_ignore=None):
     package_path = path_for_import(package_name)
     for (root, dirs, files) in os.walk(str(package_path)):
         for f in files:
-            if (f == "local_settings.py" or not f.endswith(".py")
-                or root.split(os.sep)[-1] == "migrations"):
+            if (f == "local_settings.py" or not f.endswith(".py") or
+                    root.split(os.sep)[-1] in ["migrations"]):
                 # Ignore
                 continue
             for warning in checker(os.path.join(root, f)):
@@ -203,8 +200,11 @@ def run_pep8_for_package(package_name, extra_ignore=None):
             super(Checker, self).check_all(*args, **kwargs)
             return self.errors
 
+    style_guide = pep8.StyleGuide(config_file="setup.cfg")
+
     def pep8_checker(path):
-        for line_number, text in Checker(path).check_all():
+        for line_number, text in Checker(path,
+                options=style_guide.options).check_all():
             yield "%s:%s: %s" % (path, line_number, text)
 
     args = (pep8_checker, package_name, extra_ignore)

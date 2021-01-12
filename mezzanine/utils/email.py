@@ -4,7 +4,7 @@ from future.builtins import bytes, str
 from django.contrib.auth.tokens import default_token_generator
 from django.core.mail import EmailMultiAlternatives
 from django.core.urlresolvers import reverse
-from django.template import loader, Context
+from django.template import loader
 from django.utils.http import int_to_base36
 
 from mezzanine.conf import settings
@@ -25,7 +25,7 @@ def subject_template(template, context):
     Loads and renders an email subject template, returning the
     subject string.
     """
-    subject = loader.get_template(template).render(Context(context))
+    subject = loader.get_template(template).render(context)
     return " ".join(subject.splitlines()).strip()
 
 
@@ -43,7 +43,7 @@ def send_mail_template(subject, template, addr_from, addr_to, context=None,
     if fail_silently is None:
         fail_silently = settings.EMAIL_FAIL_SILENTLY
     # Add template accessible settings from Mezzanine to the context
-    # (normally added by a context processor for HTTP requests)
+    # (normally added by a context processor for HTTP requests).
     context.update(context_settings())
     # Allow for a single address to be passed in.
     # Python 3 strings have an __iter__ method, so the following hack
@@ -55,7 +55,7 @@ def send_mail_template(subject, template, addr_from, addr_to, context=None,
         addr_bcc = [addr_bcc]
     # Loads a template passing in vars as context.
     render = lambda type: loader.get_template("%s.%s" %
-                          (template, type)).render(Context(context))
+                          (template, type)).render(context)
     # Create and send email.
     msg = EmailMultiAlternatives(subject, render("txt"),
                                  addr_from, addr_to, addr_bcc,
@@ -97,7 +97,6 @@ def send_approve_mail(request, user):
     ``ACCOUNTS_APPROVAL_EMAILS``, when a new user signs up and the
     ``ACCOUNTS_APPROVAL_REQUIRED`` setting is ``True``.
     """
-    settings.use_editable()
     approval_emails = split_addresses(settings.ACCOUNTS_APPROVAL_EMAILS)
     if not approval_emails:
         return

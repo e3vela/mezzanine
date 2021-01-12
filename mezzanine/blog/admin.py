@@ -9,9 +9,9 @@ from django.utils.translation import ugettext_lazy as _
 
 from mezzanine.blog.models import BlogPost, BlogCategory
 from mezzanine.conf import settings
-from mezzanine.core.admin import DisplayableAdmin, OwnableAdmin
+from mezzanine.core.admin import (DisplayableAdmin, OwnableAdmin,
+                                  BaseTranslationModelAdmin)
 from mezzanine.twitter.admin import TweetableAdminMixin
-
 
 blogpost_fieldsets = deepcopy(DisplayableAdmin.fieldsets)
 blogpost_fieldsets[0][1]["fields"].insert(1, "categories")
@@ -52,7 +52,7 @@ class BlogPostAdmin(TweetableAdminMixin, DisplayableAdmin, OwnableAdmin):
         return super(BlogPostAdmin, self).get_form(request, obj, **kwargs)
 
 
-class BlogCategoryAdmin(admin.ModelAdmin):
+class BlogCategoryAdmin(BaseTranslationModelAdmin):
     """
     Admin class for blog categories. Hides itself from the admin menu
     unless explicitly specified.
@@ -60,7 +60,7 @@ class BlogCategoryAdmin(admin.ModelAdmin):
 
     fieldsets = ((None, {"fields": ("title",)}),)
 
-    def in_menu(self):
+    def has_module_permission(self, request):
         """
         Hide from the admin menu unless explicitly set in ``ADMIN_MENU_ORDER``.
         """

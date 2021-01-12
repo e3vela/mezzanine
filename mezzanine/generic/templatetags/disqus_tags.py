@@ -1,5 +1,5 @@
 from __future__ import unicode_literals
-from future.builtins import bytes, int
+from future.builtins import int
 
 import base64
 import hashlib
@@ -8,6 +8,7 @@ import json
 import time
 
 from mezzanine import template
+from mezzanine.utils.deprecation import is_authenticated
 
 
 register = template.Library()
@@ -33,7 +34,7 @@ def disqus_sso_script(context):
     public_key = getattr(settings, "COMMENTS_DISQUS_API_PUBLIC_KEY", "")
     secret_key = getattr(settings, "COMMENTS_DISQUS_API_SECRET_KEY", "")
     user = context["request"].user
-    if public_key and secret_key and user.is_authenticated():
+    if public_key and secret_key and is_authenticated(user):
         context["public_key"] = public_key
         context["sso_data"] = _get_disqus_sso(user, public_key, secret_key)
     return context
@@ -49,12 +50,12 @@ def _get_disqus_sso(user, public_key, secret_key):
         'email': user.email,
     })
     # encode the data to base64
-    message = base64.b64encode(bytes(data, encoding="utf8"))
+    message = base64.b64encode(data.encode("utf8"))
     # generate a timestamp for signing the message
     timestamp = int(time.time())
     # generate our hmac signature
-    sig = hmac.HMAC(bytes(secret_key, encoding="utf8"),
-                    bytes('%s %s' % (message, timestamp), encoding="utf8"),
+    sig = hmac.HMAC(secret_key.encode("utf8"),
+                    ('%s %s' % (message, timestamp)).encode("utf8"),
                     hashlib.sha1).hexdigest()
 
     # Messages are of the form <message> <signature> <timestamp>

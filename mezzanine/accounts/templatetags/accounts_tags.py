@@ -1,10 +1,11 @@
 from __future__ import unicode_literals
 
-from django.utils.datastructures import SortedDict
+from collections import OrderedDict
+
+from django.contrib.auth import get_user_model
 
 from mezzanine import template
 from mezzanine.conf import settings
-from mezzanine.utils.models import get_user_model
 from mezzanine.accounts import (get_profile_form, get_profile_user_fieldname,
                                 get_profile_for_user, ProfileNotConfigured)
 from mezzanine.accounts.forms import LoginForm
@@ -64,12 +65,12 @@ def profile_fields(user):
     sent to administrators when the ``ACCOUNTS_APPROVAL_REQUIRED``
     setting is set to ``True``.
     """
-    fields = SortedDict()
+    fields = OrderedDict()
     try:
         profile = get_profile_for_user(user)
         user_fieldname = get_profile_user_fieldname()
         exclude = tuple(settings.ACCOUNTS_PROFILE_FORM_EXCLUDE_FIELDS)
-        for field in profile._meta.fields:
+        for field in profile._meta.get_fields():
             if field.name not in ("id", user_fieldname) + exclude:
                 value = getattr(profile, field.name)
                 fields[field.verbose_name.title()] = value

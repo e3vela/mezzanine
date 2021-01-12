@@ -8,7 +8,6 @@ from django.template.defaultfilters import linebreaksbr, urlize
 
 from mezzanine import template
 from mezzanine.conf import settings
-from mezzanine.generic.forms import ThreadedCommentForm
 from mezzanine.generic.models import ThreadedComment
 from mezzanine.utils.importing import import_dotted_path
 
@@ -22,15 +21,17 @@ def comments_for(context, obj):
     Provides a generic context variable name for the object that
     comments are being rendered for.
     """
-    form = ThreadedCommentForm(context["request"], obj)
-    try:
-        context["posted_comment_form"]
-    except KeyError:
-        context["posted_comment_form"] = form
-    context["unposted_comment_form"] = form
-    context["comment_url"] = reverse("comment")
-    context["object_for_comments"] = obj
-    return context
+    form_class = import_dotted_path(settings.COMMENT_FORM_CLASS)
+    form = form_class(context["request"], obj)
+    context_form = context.get("posted_comment_form", form)
+    context.update({
+        'posted_comment_form':
+            context_form if context_form.target_object == obj else form,
+        'unposted_comment_form': form,
+        'comment_url': reverse("comment"),
+        'object_for_comments': obj,
+    })
+    return context.flatten()
 
 
 @register.inclusion_tag("generic/includes/comment.html", takes_context=True)
@@ -60,7 +61,7 @@ def comment_thread(context, parent):
         "no_comments": parent_id is None and not context["all_comments"],
         "replied_to": replied_to,
     })
-    return context
+    return context.flatten()
 
 
 @register.inclusion_tag("admin/includes/recent_comments.html",
@@ -72,7 +73,7 @@ def recent_comments(context):
     latest = context["settings"].COMMENTS_NUM_LATEST
     comments = ThreadedComment.objects.all().select_related("user")
     context["comments"] = comments.order_by("-id")[:latest]
-    return context
+    return context.flatten()
 
 
 @register.filter
