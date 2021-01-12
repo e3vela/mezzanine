@@ -1,3 +1,5 @@
+from __future__ import unicode_literals
+
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
 from django.db.models import AutoField
@@ -14,6 +16,15 @@ from mezzanine.core.models import (Orderable, SitePermission,
 from mezzanine.utils.urls import admin_url
 from mezzanine.utils.models import get_user_model
 
+class DisplayableAdminForm(ModelForm):
+
+    def clean_content(form):
+        status = form.cleaned_data.get("status")
+        content = form.cleaned_data.get("content")
+        if status == CONTENT_STATUS_PUBLISHED and not content:
+            raise ValidationError(_("This field is required if status "
+                                    "is set to published."))
+        return content
 
 User = get_user_model()
 
@@ -57,7 +68,8 @@ class DisplayableAdmin(admin.ModelAdmin):
     def __init__(self, *args, **kwargs):
         super(DisplayableAdmin, self).__init__(*args, **kwargs)
         try:
-            self.search_fields = self.model.objects.get_search_fields().keys()
+            self.search_fields = list(set(list(self.search_fields) + list(
+                               self.model.objects.get_search_fields().keys())))
         except AttributeError:
             pass
 

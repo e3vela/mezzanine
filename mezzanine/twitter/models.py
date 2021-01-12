@@ -1,18 +1,29 @@
+from __future__ import unicode_literals
+from future.builtins import str
 
-from datetime import datetime, timedelta
+from datetime import datetime
+import re
+
+try:
+    from urllib.parse import quote
+except ImportError:
+    # Python 2
+    from urllib import quote
+
 from django.db import models
+from django.utils.encoding import python_2_unicode_compatible
 from django.utils.html import urlize
-from django.utils.timezone import get_default_timezone, make_aware
+from django.utils.timezone import make_aware, utc
 from django.utils.translation import ugettext_lazy as _
+from requests_oauthlib import OAuth1
+import requests
+
 from mezzanine.conf import settings
 from mezzanine.twitter import QUERY_TYPE_CHOICES, QUERY_TYPE_USER, \
     QUERY_TYPE_LIST, QUERY_TYPE_SEARCH
+from mezzanine.twitter import get_auth_settings
 from mezzanine.twitter.managers import TweetManager
-from requests_oauthlib import OAuth1
-from time import timezone
-from urllib2 import quote
-import re
-import requests
+
 
 re_usernames = re.compile("@([0-9a-zA-Z+_]+)", re.IGNORECASE)
 re_hashtags = re.compile("#([0-9a-zA-Z+_]+)", re.IGNORECASE)
@@ -20,6 +31,11 @@ replace_hashtags = "<a href=\"http://twitter.com/search?q=%23\\1\">#\\1</a>"
 replace_usernames = "<a href=\"http://twitter.com/\\1\">@\\1</a>"
 
 
+class TwitterQueryException(Exception):
+    pass
+
+
+@python_2_unicode_compatible
 class Query(models.Model):
 
     type = models.CharField(_("Type"), choices=QUERY_TYPE_CHOICES,
@@ -32,40 +48,53 @@ class Query(models.Model):
         verbose_name_plural = _("Twitter queries")
         ordering = ("-id",)
 
-    def __unicode__(self):
+    def __str__(self):
         return "%s: %s" % (self.get_type_display(), self.value)
 
     def run(self):
         """
         Request new tweets from the Twitter API.
         """
+        try:
+            value = quote(self.value)
+        except KeyError:
+            value = self.value
         urls = {
             QUERY_TYPE_USER: ("https://api.twitter.com/1.1/statuses/"
                               "user_timeline.json?screen_name=%s"
-                              "&include_rts=true" %
-                              self.value.lstrip("@")),
+                              "&include_rts=true" % value.lstrip("@")),
             QUERY_TYPE_LIST: ("https://api.twitter.com/1.1/lists/statuses.json"
-                              "?list_id=%s&include_rts=true" %
-                              self.value.encode("utf-8")),
+                              "?list_id=%s&include_rts=true" % value),
             QUERY_TYPE_SEARCH: "https://api.twitter.com/1.1/search/tweets.json"
-                                "?q=%s" %
-                               quote(self.value.encode("utf-8")),
+                                "?q=%s" % value,
         }
         try:
             url = urls[self.type]
         except KeyError:
-            return
+            raise TwitterQueryException("Invalid query type: %s" % self.type)
         settings.use_editable()
-        auth_settings = (settings.TWITTER_CONSUMER_KEY,
-                         settings.TWITTER_CONSUMER_SECRET,
-                         settings.TWITTER_ACCESS_TOKEN_KEY,
-                         settings.TWITTER_ACCESS_TOKEN_SECRET)
-        if not all(auth_settings):
-            return
+        auth_settings = get_auth_settings()
+        if not auth_settings:
+            from mezzanine.conf import registry
+            if self.value == registry["TWITTER_DEFAULT_QUERY"]["default"]:
+                # These are some read-only keys and secrets we use
+                # for the default query (eg nothing has been configured)
+                auth_settings = (
+                    "KxZTRD3OBft4PP0iQW0aNQ",
+                    "sXpQRSDUVJ2AVPZTfh6MrJjHfOGcdK4wRb1WTGQ",
+                    "1368725588-ldWCsd54AJpG2xcB5nyTHyCeIC3RJcNVUAkB1OI",
+                    "r9u7qS18t8ad4Hu9XVqmCGxlIpzoCN3e1vx6LOSVgyw3R",
+                )
+            else:
+                raise TwitterQueryException("Twitter OAuth settings missing")
         try:
             tweets = requests.get(url, auth=OAuth1(*auth_settings)).json()
-        except:
-            return
+        except Exception as e:
+            raise TwitterQueryException("Error retrieving: %s" % e)
+        try:
+            raise TwitterQueryException(tweets["errors"][0]["message"])
+        except (IndexError, KeyError, TypeError):
+            pass
         if self.type == "search":
             tweets = tweets["statuses"]
         for tweet_json in tweets:
@@ -98,8 +127,11 @@ class Query(models.Model):
                 chars = [ch for ch in tweet.text if ord(ch) < 0x800]
                 tweet.text = ''.join(chars)
             d = datetime.strptime(tweet_json["created_at"], date_format)
-            d -= timedelta(seconds=timezone)
-            tweet.created_at = make_aware(d, get_default_timezone())
+            tweet.created_at = make_aware(d, utc)
+            try:
+                tweet.save()
+            except Warning:
+                pass
             tweet.save()
         self.interested = False
         self.save()
@@ -128,7 +160,7 @@ class Tweet(models.Model):
         verbose_name_plural = _("Tweets")
         ordering = ("-created_at",)
 
-    def __unicode__(self):
+    def __str__(self):
         return "%s: %s" % (self.user_name, self.text)
 
     def is_retweet(self):

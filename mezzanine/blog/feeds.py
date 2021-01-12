@@ -1,3 +1,4 @@
+from __future__ import unicode_literals
 
 from django.contrib.syndication.views import Feed
 from django.core.urlresolvers import reverse
@@ -5,11 +6,13 @@ from django.shortcuts import get_object_or_404
 from django.utils.feedgenerator import Atom1Feed
 from django.utils.html import strip_tags
 
+from mezzanine.core.templatetags.mezzanine_tags import richtext_filters
 from mezzanine.blog.models import BlogPost, BlogCategory
 from mezzanine.generic.models import Keyword
 from mezzanine.pages.models import Page
 from mezzanine.conf import settings
 from mezzanine.utils.models import get_user_model
+
 
 User = get_user_model()
 
@@ -53,7 +56,7 @@ class PostsRSS(Feed):
         return self._description
 
     def link(self):
-        return reverse("blog_post_feed", kwargs={"format": "rss"})
+        return reverse("blog_post_list")
 
     def items(self):
         if not self._public:
@@ -61,7 +64,7 @@ class PostsRSS(Feed):
         blog_posts = BlogPost.objects.published().select_related("user")
         if self.tag:
             tag = get_object_or_404(Keyword, slug=self.tag)
-            blog_posts = blog_posts.filter(keywords__in=tag.assignments.all())
+            blog_posts = blog_posts.filter(keywords__keyword=tag)
         if self.category:
             category = get_object_or_404(BlogCategory, slug=self.category)
             blog_posts = blog_posts.filter(categories=category)
@@ -74,7 +77,7 @@ class PostsRSS(Feed):
         return blog_posts
 
     def item_description(self, item):
-        return item.content
+        return richtext_filters(item.content)
 
     def categories(self):
         if not self._public:
@@ -104,6 +107,3 @@ class PostsAtom(PostsRSS):
 
     def subtitle(self):
         return self.description()
-
-    def link(self):
-        return reverse("blog_post_feed", kwargs={"format": "atom"})

@@ -1,10 +1,15 @@
+from __future__ import unicode_literals
 
 from django.contrib.auth import authenticate
+from django.contrib.auth.tokens import default_token_generator
 from django.db.models import Q
+from django.db.models.manager import Manager
 from django import forms
-from django.utils.translation import ugettext as _
+from django.utils.http import int_to_base36
+from django.utils.translation import ugettext, ugettext_lazy as _
 
-from mezzanine.accounts import get_profile_model, get_profile_user_fieldname
+from mezzanine.accounts import (get_profile_model, get_profile_user_fieldname,
+                                get_profile_for_user, ProfileNotConfigured)
 from mezzanine.conf import settings
 from mezzanine.core.forms import Html5Mixin
 from mezzanine.utils.models import get_user_model
@@ -13,16 +18,19 @@ from mezzanine.utils.urls import slugify, unique_slug
 
 User = get_user_model()
 
+_exclude_fields = tuple(settings.ACCOUNTS_PROFILE_FORM_EXCLUDE_FIELDS)
+
 # If a profile model has been configured with the ``AUTH_PROFILE_MODULE``
 # setting, create a model form for it that will have its fields added to
 # ``ProfileForm``.
-Profile = get_profile_model()
-_exclude_fields = tuple(settings.ACCOUNTS_PROFILE_FORM_EXCLUDE_FIELDS)
-if Profile is not None:
+try:
     class ProfileFieldsForm(forms.ModelForm):
         class Meta:
-            model = Profile
+            model = get_profile_model()
             exclude = (get_profile_user_fieldname(),) + _exclude_fields
+except ProfileNotConfigured:
+    pass
+
 
 if settings.ACCOUNTS_NO_USERNAME:
     _exclude_fields += ("username",)
@@ -49,9 +57,9 @@ class LoginForm(Html5Mixin, forms.Form):
         self._user = authenticate(username=username, password=password)
         if self._user is None:
             raise forms.ValidationError(
-                             _("Invalid username/email and password"))
+                             ugettext("Invalid username/email and password"))
         elif not self._user.is_active:
-            raise forms.ValidationError(_("Your account is inactive"))
+            raise forms.ValidationError(ugettext("Your account is inactive"))
         return self.cleaned_data
 
     def save(self):
@@ -83,7 +91,7 @@ class ProfileForm(Html5Mixin, forms.ModelForm):
         self._signup = self.instance.id is None
         user_fields = User._meta.get_all_field_names()
         try:
-            self.fields["username"].help_text = _(
+            self.fields["username"].help_text = ugettext(
                         "Only letters, numbers, dashes or underscores please")
         except KeyError:
             pass
@@ -99,17 +107,24 @@ class ProfileForm(Html5Mixin, forms.ModelForm):
                 if not self._signup:
                     self.fields[field].required = False
                     if field == "password1":
-                        self.fields[field].help_text = _(
+                        self.fields[field].help_text = ugettext(
                         "Leave blank unless you want to change your password")
+
         # Add any profile fields to the form.
-        self._has_profile = Profile is not None
-        if self._has_profile:
-            profile_fields = ProfileFieldsForm().fields
+        try:
+            profile_fields_form = self.get_profile_fields_form()
+            profile_fields = profile_fields_form().fields
             self.fields.update(profile_fields)
             if not self._signup:
+                user_profile = get_profile_for_user(self.instance)
                 for field in profile_fields:
-                    value = getattr(self.instance.get_profile(), field)
+                    value = getattr(user_profile, field)
+                    # Check for multiple initial values, i.e. a m2m field
+                    if isinstance(value, Manager):
+                        value = value.all()
                     self.initial[field] = value
+        except ProfileNotConfigured:
+            pass
 
     def clean_username(self):
         """
@@ -119,14 +134,16 @@ class ProfileForm(Html5Mixin, forms.ModelForm):
         """
         username = self.cleaned_data.get("username")
         if username.lower() != slugify(username).lower():
-            raise forms.ValidationError(_("Username can only contain letters, "
-                                          "numbers, dashes or underscores."))
+            raise forms.ValidationError(
+                ugettext("Username can only contain letters, numbers, dashes "
+                         "or underscores."))
         lookup = {"username__iexact": username}
         try:
             User.objects.exclude(id=self.instance.id).get(**lookup)
         except User.DoesNotExist:
             return username
-        raise forms.ValidationError(_("This username is already registered"))
+        raise forms.ValidationError(
+                            ugettext("This username is already registered"))
 
     def clean_password2(self):
         """
@@ -139,10 +156,11 @@ class ProfileForm(Html5Mixin, forms.ModelForm):
         if password1:
             errors = []
             if password1 != password2:
-                errors.append(_("Passwords do not match"))
+                errors.append(ugettext("Passwords do not match"))
             if len(password1) < settings.ACCOUNTS_MIN_PASSWORD_LENGTH:
-                errors.append(_("Password must be at least %s characters") %
-                              settings.ACCOUNTS_MIN_PASSWORD_LENGTH)
+                errors.append(
+                        ugettext("Password must be at least %s characters") %
+                        settings.ACCOUNTS_MIN_PASSWORD_LENGTH)
             if errors:
                 self._errors["password1"] = self.error_class(errors)
         return password2
@@ -155,7 +173,8 @@ class ProfileForm(Html5Mixin, forms.ModelForm):
         qs = User.objects.exclude(id=self.instance.id).filter(email=email)
         if len(qs) == 0:
             return email
-        raise forms.ValidationError(_("This email is already registered"))
+        raise forms.ValidationError(
+                                ugettext("This email is already registered"))
 
     def save(self, *args, **kwargs):
         """
@@ -180,13 +199,21 @@ class ProfileForm(Html5Mixin, forms.ModelForm):
         password = self.cleaned_data.get("password1")
         if password:
             user.set_password(password)
+        elif self._signup:
+            try:
+                user.set_unusable_password()
+            except AttributeError:
+                # This could happen if using a custom user model that
+                # doesn't inherit from Django's AbstractBaseUser.
+                pass
         user.save()
 
-        # Save profile model.
-        if self._has_profile:
-            profile = user.get_profile()
-            profile_fields_form = self.get_profile_fields_form()
-            profile_fields_form(self.data, self.files, instance=profile).save()
+        try:
+            profile = get_profile_for_user(user)
+            profile_form = self.get_profile_fields_form()
+            profile_form(self.data, self.files, instance=profile).save()
+        except ProfileNotConfigured:
+            pass
 
         if self._signup:
             settings.use_editable()
@@ -195,12 +222,17 @@ class ProfileForm(Html5Mixin, forms.ModelForm):
                 user.is_active = False
                 user.save()
             else:
-                user = authenticate(username=user.username,
-                                    password=password, is_active=True)
+                token = default_token_generator.make_token(user)
+                user = authenticate(uidb36=int_to_base36(user.id),
+                                    token=token,
+                                    is_active=True)
         return user
 
     def get_profile_fields_form(self):
-        return ProfileFieldsForm
+        try:
+            return ProfileFieldsForm
+        except NameError:
+            raise ProfileNotConfigured
 
 
 class PasswordResetForm(Html5Mixin, forms.Form):
@@ -218,7 +250,7 @@ class PasswordResetForm(Html5Mixin, forms.Form):
             user = User.objects.get(username_or_email, is_active=True)
         except User.DoesNotExist:
             raise forms.ValidationError(
-                             _("Invalid username/email"))
+                             ugettext("Invalid username/email"))
         else:
             self._user = user
         return self.cleaned_data

@@ -1,11 +1,21 @@
+from __future__ import unicode_literals
+from future.builtins import str
+from future.utils import with_metaclass
 
-from django.contrib.sites.models import Site
+from json import loads
+try:
+    from urllib.request import urlopen
+    from urllib.parse import urlencode
+except ImportError:
+    from urllib import urlopen, urlencode
 
 from django.contrib.contenttypes.generic import GenericForeignKey
+from django.contrib.sites.models import Site
 from django.db import models
 from django.db.models.base import ModelBase
 from django.db.models.signals import post_save
 from django.template.defaultfilters import truncatewords_html
+from django.utils.encoding import python_2_unicode_compatible
 from django.utils.html import strip_tags
 from django.utils.timesince import timesince
 from django.utils.timezone import now
@@ -16,7 +26,7 @@ from mezzanine.core.managers import DisplayableManager, CurrentSiteManager
 from mezzanine.generic.fields import KeywordsField
 from mezzanine.utils.html import TagCloser
 from mezzanine.utils.models import base_concrete_model, get_user_model_name
-from mezzanine.utils.sites import current_site_id
+from mezzanine.utils.sites import current_site_id, current_request
 from mezzanine.utils.urls import admin_url, slugify, unique_slug
 
 
@@ -47,12 +57,13 @@ class SiteRelated(models.Model):
         if update_site or not self.id:
             # need an id to assign m2m
             if not self.id:
-                super(SiteRelated, self).save(*args, **kwargs) 
+                super(SiteRelated, self).save(*args, **kwargs)
             current_site = Site.objects.get(pk=current_site_id())
             self.sites.add(current_site)
         super(SiteRelated, self).save(*args, **kwargs)
 
 
+@python_2_unicode_compatible
 class Slugged(SiteRelated):
     """
     Abstract model that handles auto-generating slugs. Each slugged
@@ -67,21 +78,27 @@ class Slugged(SiteRelated):
     class Meta:
         abstract = True
 
-    def __unicode__(self):
+    def __str__(self):
         return self.title
 
     def save(self, *args, **kwargs):
         """
-        Create a unique slug by appending an index.
+        If no slug is provided, generates one before saving.
         """
         if not self.slug:
-            self.slug = self.get_slug()
+            self.slug = self.generate_unique_slug()
+        super(Slugged, self).save(*args, **kwargs)
+
+    def generate_unique_slug(self):
+        """
+        Create a unique slug by passing the result of get_slug() to
+        utils.urls.unique_slug, which appends an index if necessary.
+        """
         # For custom content types, use the ``Page`` instance for
         # slug lookup.
         concrete_model = base_concrete_model(Slugged, self)
         slug_qs = concrete_model.objects.exclude(id=self.id)
-        self.slug = unique_slug(slug_qs, "slug", self.slug)
-        super(Slugged, self).save(*args, **kwargs)
+        return unique_slug(slug_qs, "slug", self.get_slug())
 
     def get_slug(self):
         """
@@ -128,7 +145,7 @@ class MetaData(models.Model):
         Accessor for the optional ``_meta_title`` field, which returns
         the string version of the instance if not provided.
         """
-        return self._meta_title or unicode(self)
+        return self._meta_title or str(self)
 
     def description_from_content(self):
         """
@@ -145,12 +162,12 @@ class MetaData(models.Model):
                         description = getattr(self, field.name)
                         if description:
                             from mezzanine.core.templatetags.mezzanine_tags \
-                            import richtext_filter
-                            description = richtext_filter(description)
+                            import richtext_filters
+                            description = richtext_filters(description)
                             break
         # Fall back to the title if description couldn't be determined.
         if not description:
-            description = unicode(self)
+            description = str(self)
         # Strip everything after the first block or sentence.
         ends = ("</p>", "<br />", "<br/>", "<br>", "</ul>",
                 "\n", ". ", "! ", "? ")
@@ -164,6 +181,25 @@ class MetaData(models.Model):
         return description
 
 
+class TimeStamped(models.Model):
+    """
+    Provides created and updated timestamps on models.
+    """
+
+    class Meta:
+        abstract = True
+
+    created = models.DateTimeField(null=True, editable=False)
+    updated = models.DateTimeField(null=True, editable=False)
+
+    def save(self, *args, **kwargs):
+        _now = now()
+        self.updated = _now
+        if not self.id:
+            self.created = _now
+        super(TimeStamped, self).save(*args, **kwargs)
+
+
 CONTENT_STATUS_DRAFT = 1
 CONTENT_STATUS_PUBLISHED = 2
 CONTENT_STATUS_CHOICES = (
@@ -172,7 +208,10 @@ CONTENT_STATUS_CHOICES = (
 )
 
 
-class Displayable(Slugged, MetaData):
+SHORT_URL_UNSET = "unset"
+
+
+class Displayable(Slugged, MetaData, TimeStamped):
     """
     Abstract model that provides features of a visible page on the
     website such as publishing fields. Basis of Mezzanine pages,
@@ -227,6 +266,54 @@ class Displayable(Slugged, MetaData):
         name = self.__class__.__name__
         raise NotImplementedError("The model %s does not have "
                                   "get_absolute_url defined" % name)
+
+    def get_absolute_url_with_host(self):
+        """
+        Returns host + ``get_absolute_url`` - used by the various
+        ``short_url`` mechanics below.
+        Technically we should use ``self.site.domain``, here, however
+        if we were to invoke the ``short_url`` mechanics on a list of
+        data (eg blog post list view), we'd trigger a db query per
+        item. Using ``current_request`` should provide the same
+        result, since site related data should only be loaded based
+        on the current host anyway.
+        """
+        return current_request().build_absolute_uri(self.get_absolute_url())
+
+    def set_short_url(self):
+        """
+        Generates the ``short_url`` attribute if the model does not
+        already have one. Used by the ``set_short_url_for`` template
+        tag and ``TweetableAdmin``.
+        If no sharing service is defined (bitly is the one implemented,
+        but others could be by overriding ``generate_short_url``), the
+        ``SHORT_URL_UNSET`` marker gets stored in the DB. In this case,
+        ``short_url`` is temporarily (eg not persisted) set to
+        host + ``get_absolute_url`` - this is so that we don't
+        permanently store ``get_absolute_url``, since it may change
+        over time.
+        """
+        if not self.short_url or self.short_url == SHORT_URL_UNSET:
+            self.short_url = self.generate_short_url()
+            self.save()
+        if self.short_url == SHORT_URL_UNSET:
+            self.short_url = self.get_absolute_url_with_host()
+
+    def generate_short_url(self):
+        """
+        Returns a new short URL generated using bit.ly if credentials for the
+        service have been specified.
+        """
+        from mezzanine.conf import settings
+        if settings.BITLY_ACCESS_TOKEN:
+            url = "https://api-ssl.bit.ly/v3/shorten?%s" % urlencode({
+                "access_token": settings.BITLY_ACCESS_TOKEN,
+                "uri": self.get_absolute_url_with_host(),
+            })
+            response = loads(urlopen(url).read().decode("utf-8"))
+            if response["status_code"] == 200:
+                return response["data"]["url"]
+        return SHORT_URL_UNSET
 
     def _get_next_or_previous_by_publish_date(self, is_next, **kwargs):
         """
@@ -297,7 +384,7 @@ class OrderableBase(ModelBase):
         return super(OrderableBase, cls).__new__(cls, name, bases, attrs)
 
 
-class Orderable(models.Model):
+class Orderable(with_metaclass(OrderableBase, models.Model)):
     """
     Abstract model that provides a custom ordering integer field
     similar to using Meta's ``order_with_respect_to``, since to
@@ -305,8 +392,6 @@ class Orderable(models.Model):
     or with Generic Relations. We may also want this feature for
     models that aren't ordered with respect to a particular field.
     """
-
-    __metaclass__ = OrderableBase
 
     _order = models.IntegerField(_("Order"), null=True)
 
@@ -414,7 +499,7 @@ class SitePermission(models.Model):
     """
 
     user = models.ForeignKey(user_model_name, verbose_name=_("Author"),
-        related_name="%(class)ss")
+        related_name="%(class)ss", unique=True)
     sites = models.ManyToManyField("sites.Site", blank=True,
                                    verbose_name=_("Sites"))
 
