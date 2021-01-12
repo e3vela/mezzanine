@@ -1,3 +1,5 @@
+from __future__ import unicode_literals
+from future.builtins import str
 
 import re
 import unicodedata
@@ -6,7 +8,12 @@ from django.core.exceptions import ObjectDoesNotExist
 from django.core.urlresolvers import (resolve, reverse, NoReverseMatch,
                                       get_script_prefix)
 from django.shortcuts import redirect
-from django.utils.encoding import smart_unicode
+try:
+    from django.utils.encoding import smart_text
+except ImportError:
+    # Backward compatibility for Py2 and Django < 1.5
+    from django.utils.encoding import smart_unicode as smart_text
+from django.utils.http import is_safe_url
 from django.utils import translation
 
 from mezzanine.conf import settings
@@ -56,7 +63,7 @@ def slugify_unicode(s):
     Adopted from https://github.com/mozilla/unicode-slugify/
     """
     chars = []
-    for char in unicode(smart_unicode(s)):
+    for char in str(smart_text(s)):
         cat = unicodedata.category(char)[0]
         if cat in "LN" or char in "-_~":
             chars.append(char)
@@ -84,6 +91,15 @@ def unique_slug(queryset, slug_field, slug):
     return slug
 
 
+def next_url(request):
+    """
+    Returns URL to redirect to from the ``next`` param in the request.
+    """
+    next = request.REQUEST.get("next", "")
+    host = request.get_host()
+    return next if next and is_safe_url(next, host=host) else None
+
+
 def login_redirect(request):
     """
     Returns the redirect response for login/signup. Favors:
@@ -95,12 +111,17 @@ def login_redirect(request):
     if "mezzanine.accounts" in settings.INSTALLED_APPS:
         from mezzanine.accounts import urls
         ignorable_nexts += (urls.SIGNUP_URL, urls.LOGIN_URL, urls.LOGOUT_URL)
-    next = request.REQUEST.get("next", "")
+    next = next_url(request) or ""
     if next in ignorable_nexts:
-        try:
-            next = reverse(settings.LOGIN_REDIRECT_URL)
-        except NoReverseMatch:
-            next = "/"
+        next = settings.LOGIN_REDIRECT_URL
+        if next == "/accounts/profile/":
+            # Use the homepage if LOGIN_REDIRECT_URL is Django's defaut.
+            next = get_script_prefix()
+        else:
+            try:
+                next = reverse(next)
+            except NoReverseMatch:
+                pass
     return redirect(next)
 
 
@@ -115,4 +136,5 @@ def path_to_slug(path):
     for prefix in (lang_code, settings.SITE_PREFIX, PAGES_SLUG):
         if prefix:
             path = path.replace(prefix, "", 1)
-    return path.strip("/") or "/"
+    path = path.strip("/") if settings.APPEND_SLASH else path.lstrip("/")
+    return path or "/"

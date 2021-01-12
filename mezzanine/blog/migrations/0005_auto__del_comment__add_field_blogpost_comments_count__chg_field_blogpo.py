@@ -1,13 +1,25 @@
 # encoding: utf-8
+
 import datetime
 from south.db import db
 from south.v2 import SchemaMigration
 from django.db import models
 
+try:
+    from django.contrib.auth import get_user_model
+except ImportError: # django < 1.5
+    from django.contrib.auth.models import User
+else:
+    User = get_user_model()
+
+user_orm_label = '%s.%s' % (User._meta.app_label, User._meta.object_name)
+user_model_label = '%s.%s' % (User._meta.app_label, User._meta.module_name)
+
+
 class Migration(SchemaMigration):
-    
+
     def forwards(self, orm):
-        
+
         # Deleting model 'Comment'
         db.delete_table('blog_comment')
 
@@ -16,10 +28,10 @@ class Migration(SchemaMigration):
 
         # Changing field 'BlogPost.description'
         db.alter_column('blog_blogpost', 'description', self.gf('django.db.models.fields.TextField')(blank=True))
-    
-    
+
+
     def backwards(self, orm):
-        
+
         # Adding model 'Comment'
         db.create_table('blog_comment', (
             ('blog_post', self.gf('django.db.models.fields.related.ForeignKey')(related_name='comments', to=orm['blog.BlogPost'])),
@@ -42,8 +54,8 @@ class Migration(SchemaMigration):
 
         # Changing field 'BlogPost.description'
         db.alter_column('blog_blogpost', 'description', self.gf('mezzanine.core.fields.HtmlField')(blank=True))
-    
-    
+
+
     models = {
         'auth.group': {
             'Meta': {'object_name': 'Group'},
@@ -58,8 +70,8 @@ class Migration(SchemaMigration):
             'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
             'name': ('django.db.models.fields.CharField', [], {'max_length': '50'})
         },
-        'auth.user': {
-            'Meta': {'object_name': 'User'},
+        user_model_label: {
+            'Meta': {'object_name': User.__name__, 'db_table': "'%s'" % User._meta.db_table},
             'date_joined': ('django.db.models.fields.DateTimeField', [], {'default': 'datetime.datetime.now'}),
             'email': ('django.db.models.fields.EmailField', [], {'max_length': '75', 'blank': 'True'}),
             'first_name': ('django.db.models.fields.CharField', [], {'max_length': '30', 'blank': 'True'}),
@@ -84,7 +96,7 @@ class Migration(SchemaMigration):
             'Meta': {'object_name': 'BlogPost'},
             '_keywords': ('django.db.models.fields.CharField', [], {'max_length': '500'}),
             'categories': ('django.db.models.fields.related.ManyToManyField', [], {'symmetrical': 'False', 'related_name': "'blogposts'", 'blank': 'True', 'to': "orm['blog.BlogCategory']"}),
-            'comments': ('mezzanine.generic.fields.CommentsField', [], {'object_id_field': "'object_pk'", 'to': "orm['generic.ThreadedComment']"}),
+            #'comments': ('mezzanine.generic.fields.CommentsField', [], {'object_id_field': "'object_pk'", 'to': "orm['generic.ThreadedComment']"}),
             'comments_count': ('django.db.models.fields.IntegerField', [], {'default': '0'}),
             'content': ('mezzanine.core.fields.HtmlField', [], {}),
             'description': ('django.db.models.fields.TextField', [], {'blank': 'True'}),
@@ -96,7 +108,7 @@ class Migration(SchemaMigration):
             'slug': ('django.db.models.fields.CharField', [], {'max_length': '100', 'null': 'True', 'blank': 'True'}),
             'status': ('django.db.models.fields.IntegerField', [], {'default': '1'}),
             'title': ('django.db.models.fields.CharField', [], {'max_length': '100'}),
-            'user': ('django.db.models.fields.related.ForeignKey', [], {'related_name': "'blogposts'", 'to': "orm['auth.User']"})
+            'user': ('django.db.models.fields.related.ForeignKey', [], {'related_name': "'blogposts'", 'to': "orm['%s']" % user_orm_label})
         },
         'comments.comment': {
             'Meta': {'object_name': 'Comment', 'db_table': "'django_comments'"},
@@ -109,7 +121,7 @@ class Migration(SchemaMigration):
             'object_pk': ('django.db.models.fields.TextField', [], {}),
             'site': ('django.db.models.fields.related.ForeignKey', [], {'to': "orm['sites.Site']"}),
             'submit_date': ('django.db.models.fields.DateTimeField', [], {'default': 'None'}),
-            'user': ('django.db.models.fields.related.ForeignKey', [], {'blank': 'True', 'related_name': "'comment_comments'", 'null': 'True', 'to': "orm['auth.User']"}),
+            'user': ('django.db.models.fields.related.ForeignKey', [], {'blank': 'True', 'related_name': "'comment_comments'", 'null': 'True', 'to': "orm['%s']" % user_orm_label}),
             'user_email': ('django.db.models.fields.EmailField', [], {'max_length': '75', 'blank': 'True'}),
             'user_name': ('django.db.models.fields.CharField', [], {'max_length': '50', 'blank': 'True'}),
             'user_url': ('django.db.models.fields.URLField', [], {'max_length': '200', 'blank': 'True'})
@@ -141,5 +153,5 @@ class Migration(SchemaMigration):
             'name': ('django.db.models.fields.CharField', [], {'max_length': '50'})
         }
     }
-    
+
     complete_apps = ['blog']
