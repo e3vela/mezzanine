@@ -23,7 +23,7 @@ register_setting(
     editable=False,
     default=(
         (_("Content"), ("pages.Page", "blog.BlogPost",
-           "generic.ThreadedComment", (_("Media Library"), "fb_browse"),)),
+           "generic.ThreadedComment", (_("Media Library"), "media-library"),)),
         (_("Site"), ("sites.Site", "redirects.Redirect", "conf.Setting")),
         (_("Users"), ("auth.User", "auth.Group",)),
     ),
@@ -31,15 +31,18 @@ register_setting(
 
 register_setting(
     name="ADMIN_MENU_COLLAPSED",
+    label=_("Collapse the Admin menu"),
     description=_("Controls whether or not the left-hand admin menu is "
-                  "collpased by default."),
+                  "collapsed by default."),
     editable=True,
     default=False,
 )
 
 register_setting(
     name="ADMIN_REMOVAL",
-    description=_("Unregister these models from the admin."),
+    description=_("A sequence of Python dotted paths to models "
+        "(eg: ``['mezzanine.blog.models.BlogPost',]``) that should be "
+        "removed from the admin."),
     editable=False,
     default=(),
 )
@@ -103,36 +106,6 @@ register_setting(
         "template tags used to render the admin dashboard."),
     editable=False,
     default=dashboard_tags,
-)
-
-register_setting(
-    name="DEVICE_DEFAULT",
-    description=_("Device specific template sub-directory to use as the "
-        "default device."),
-    editable=False,
-    default="",
-)
-
-register_setting(
-    name="DEVICE_USER_AGENTS",
-    description=_("Mapping of device specific template sub-directory names to "
-        "the sequence of strings that may be found in their user agents."),
-    editable=False,
-    default=(
-        ("mobile", ("2.0 MMP", "240x320", "400X240", "AvantGo", "BlackBerry",
-            "Blazer", "Cellphone", "Danger", "DoCoMo", "Elaine/3.0",
-            "EudoraWeb", "Googlebot-Mobile", "hiptop", "IEMobile",
-            "KYOCERA/WX310K", "LG/U990", "MIDP-2.", "MMEF20", "MOT-V",
-            "NetFront", "Newt", "Nintendo Wii", "Nitro", "Nokia",
-            "Opera Mini", "Palm", "PlayStation Portable", "portalmmm",
-            "Proxinet", "ProxiNet", "SHARP-TQ-GX10", "SHG-i900",
-            "Small", "SonyEricsson", "Symbian OS", "SymbianOS",
-            "TS21i-10", "UP.Browser", "UP.Link", "webOS", "Windows CE",
-            "WinWAP", "YahooSeeker/M1A1-R2D2", "iPhone", "iPod", "Android",
-            "BlackBerry9530", "LG-TU915 Obigo", "LGE VX", "webOS",
-            "Nokia5800",)
-        ),
-    ),
 )
 
 register_setting(
@@ -201,7 +174,7 @@ register_setting(
     description=_("Name of the jQuery file found in "
                   "mezzanine/core/static/mezzanine/js/"),
     editable=False,
-    default="jquery-1.7.1.min.js",
+    default="jquery-1.8.3.min.js",
 )
 
 register_setting(
@@ -210,7 +183,7 @@ register_setting(
     description=_("Name of the jQuery UI file found in "
                   "mezzanine/core/static/mezzanine/js/"),
     editable=False,
-    default="jquery-ui-1.9.1.custom.min.js",
+    default="jquery-ui-1.8.24.min.js",
 )
 
 register_setting(
@@ -290,8 +263,9 @@ register_setting(
     description=_("List of inline CSS styles that won't be stripped from "
         "``RichTextField`` instances."),
     editable=False,
-    default=("margin-top", "margin-bottom", "margin-left", "margin-right",
-        "float", "vertical-align", "border", "margin"),
+    default=("border", "display", "float", "list-style-type", "margin",
+        "margin-bottom", "margin-left", "margin-right", "margin-top",
+        "padding-left", "text-align", "text-decoration", "vertical-align"),
 )
 
 register_setting(
@@ -354,6 +328,18 @@ register_setting(
 )
 
 register_setting(
+    name="SEARCH_AGE_SCALE_FACTOR",
+    label=_("Emphasis to put on age when ranking search results"),
+    description=_("The amount of emphasis to put on age when ranking search "
+                  "results. A higher number gives more emphasis to age, "
+                  "ranking newer results higher with less regard to their "
+                  "ordinary score. Setting this to zero disables weighing "
+                  "search results by age."),
+    editable=False,
+    default=1.5,
+)
+
+register_setting(
     name="SITE_PREFIX",
     description=_("A URL prefix for mounting all of Mezzanine's urlpatterns "
         "under. When using this, you'll also need to manually apply it to "
@@ -371,6 +357,7 @@ register_setting(
         "appended to the content of the HTML title tags on every page."),
     editable=True,
     default="Mezzanine",
+    translatable=True,
 )
 
 register_setting(
@@ -379,6 +366,7 @@ register_setting(
     description=_("A tag line that will appear at the top of all pages."),
     editable=True,
     default=_("An open source content management platform."),
+    translatable=True,
 )
 
 register_setting(
@@ -411,7 +399,7 @@ register_setting(
     description=_("If ``True``, users will be automatically redirected to "
         "HTTPS for the URLs specified by the ``SSL_FORCE_URL_PREFIXES`` "
         "setting."),
-    editable=True,
+    editable=False,
     default=False,
 )
 
@@ -420,7 +408,7 @@ register_setting(
     label=_("Force Host"),
     description=_("Host name that the site should always be accessed via that "
                 "matches the SSL certificate."),
-    editable=True,
+    editable=False,
     default="",
 )
 
@@ -513,6 +501,7 @@ register_setting(
     name="TEMPLATE_ACCESSIBLE_SETTINGS",
     description=_("Sequence of setting names available within templates."),
     editable=False,
+    append=True,
     default=(
         "ACCOUNTS_APPROVAL_REQUIRED", "ACCOUNTS_VERIFICATION_REQUIRED",
         "ADMIN_MENU_COLLAPSED",
@@ -521,7 +510,8 @@ register_setting(
         "COMMENTS_DISQUS_API_PUBLIC_KEY", "COMMENTS_DISQUS_API_SECRET_KEY",
         "COMMENTS_USE_RATINGS", "DEV_SERVER", "FORMS_USE_HTML5",
         "GRAPPELLI_INSTALLED", "GOOGLE_ANALYTICS_ID", "JQUERY_FILENAME",
-        "LOGIN_URL", "LOGOUT_URL", "SITE_TITLE", "SITE_TAGLINE", "USE_L10N",
+        "JQUERY_UI_FILENAME", "LOGIN_URL", "LOGOUT_URL", "SITE_TITLE",
+        "SITE_TAGLINE", "USE_L10N", "USE_MODELTRANSLATION",
     ),
 )
 
@@ -559,9 +549,18 @@ register_setting(
 # modules, so the default values defined here will never be used.
 
 register_setting(
-    name="USE_SOUTH",
-    description=_("If ``True``, the south application will be "
-        "automatically added to the ``INSTALLED_APPS`` setting."),
+    name="USE_MODELTRANSLATION",
+    description=_("If ``True``, the django-modeltranslation application will "
+        "be automatically added to the ``INSTALLED_APPS`` setting."),
     editable=False,
-    default=True,
+    default=False,
+)
+
+register_setting(
+    name="NEVERCACHE_KEY",
+    description=_("Unique random string like ``SECRET_KEY``, but used for "
+        "two-phased cache responses. Like ``SECRET_KEY``, should be "
+        "automatically generated by the ``mezzanine-project`` command."),
+    editable=False,
+    default="",
 )

@@ -1,8 +1,5 @@
 from __future__ import unicode_literals
 from future.builtins import str
-from future.utils import with_metaclass
-
-from bleach import clean
 
 from django.conf import settings
 from django.contrib.admin.widgets import AdminTextareaWidget
@@ -12,18 +9,16 @@ from django.forms import MultipleChoiceField
 from django.utils.text import capfirst
 from django.utils.translation import ugettext_lazy as _
 
+from mezzanine.core.forms import OrderWidget
 from mezzanine.utils.importing import import_dotted_path
+from mezzanine.utils.html import escape
 
 
-# Tags and attributes added to richtext filtering whitelist when the
-# RICHTEXT_FILTER_LEVEL is set to low. General use-case for these is
-# allowing embedded video, but we will add to this fixed list over
-# time as more use-cases come up. We won't ever add script tags or
-# events (onclick etc) to this list. To enable those, filtering can
-# be turned off in the settings admin.
-LOW_FILTER_TAGS = ("iframe", "embed", "video", "param", "source", "object")
-LOW_FILTER_ATTRS = ("allowfullscreen", "autostart", "loop", "hidden",
-                    "playcount", "volume", "controls", "data", "classid")
+class OrderField(models.IntegerField):
+    def formfield(self, **kwargs):
+        kwargs.update({'widget': OrderWidget,
+                       'required': False})
+        return super(OrderField, self).formfield(**kwargs)
 
 
 class RichTextField(models.TextField):
@@ -55,23 +50,10 @@ class RichTextField(models.TextField):
         """
         Remove potentially dangerous HTML tags and attributes.
         """
-        from mezzanine.conf import settings
-        from mezzanine.core.defaults import (RICHTEXT_FILTER_LEVEL_NONE,
-                                             RICHTEXT_FILTER_LEVEL_LOW)
-        settings.use_editable()
-        if settings.RICHTEXT_FILTER_LEVEL == RICHTEXT_FILTER_LEVEL_NONE:
-            return value
-        tags = settings.RICHTEXT_ALLOWED_TAGS
-        attrs = settings.RICHTEXT_ALLOWED_ATTRIBUTES
-        styles = settings.RICHTEXT_ALLOWED_STYLES
-        if settings.RICHTEXT_FILTER_LEVEL == RICHTEXT_FILTER_LEVEL_LOW:
-            tags += LOW_FILTER_TAGS
-            attrs += LOW_FILTER_ATTRS
-        return clean(value, tags=tags, attributes=attrs, strip=True,
-                     strip_comments=False, styles=styles)
+        return escape(value)
 
 
-class MultiChoiceField(with_metaclass(models.SubfieldBase, models.CharField)):
+class MultiChoiceField(models.CharField):
     """
     Charfield that stores multiple choices selected as a comma
     separated string. Based on http://djangosnippets.org/snippets/2753/
@@ -90,10 +72,13 @@ class MultiChoiceField(with_metaclass(models.SubfieldBase, models.CharField)):
         defaults.update(kwargs)
         return MultipleChoiceField(**defaults)
 
-    def get_db_prep_value(self, value, **kwargs):
+    def get_db_prep_value(self, value, connection, **kwargs):
         if isinstance(value, (tuple, list)):
             value = ",".join([str(i) for i in value])
         return value
+
+    def from_db_value(self, value, expression, connection, context):
+        return self.to_python(value)
 
     def to_python(self, value):
         if isinstance(value, str):
@@ -103,7 +88,7 @@ class MultiChoiceField(with_metaclass(models.SubfieldBase, models.CharField)):
     def validate(self, value, instance):
         choices = [str(choice[0]) for choice in self.choices]
         if set(value) - set(choices):
-            error = self.error_messages["invalid_choice"] % value
+            error = self.error_messages["invalid_choice"] % {'value': value}
             raise ValidationError(error)
 
     def value_to_string(self, obj):
@@ -128,16 +113,3 @@ else:
             kwargs.setdefault("directory", kwargs.pop("upload_to", None))
             kwargs.setdefault("max_length", 255)
             super(FileField, self).__init__(*args, **kwargs)
-
-
-HtmlField = RichTextField  # For backward compatibility in south migrations.
-
-# South requires custom fields to be given "rules".
-# See http://south.aeracode.org/docs/customfields.html
-if "south" in settings.INSTALLED_APPS:
-    try:
-        from south.modelsinspector import add_introspection_rules
-        add_introspection_rules(patterns=["mezzanine\.core\.fields\."],
-            rules=[((FileField, RichTextField, MultiChoiceField), [], {})])
-    except ImportError:
-        pass

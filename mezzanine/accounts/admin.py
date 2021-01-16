@@ -1,12 +1,12 @@
 from __future__ import unicode_literals
 
 from django.contrib import admin
+from django.contrib.auth import get_user_model
 from mezzanine.accounts import get_profile_model, ProfileNotConfigured
 
 from mezzanine.core.admin import SitePermissionUserAdmin
 from mezzanine.conf import settings
 from mezzanine.utils.email import send_approved_mail, send_verification_mail
-from mezzanine.utils.models import get_user_model
 
 
 User = get_user_model()
@@ -51,6 +51,13 @@ try:
         can_delete = False
         template = "admin/profile_inline.html"
         extra = 0
+
+        def get_min_num(self, request, obj=None, **kwargs):
+            """This causes profile forms to be shown when editing but hidden
+            when creating. If min_num is fixed at 1, Django's initial user
+            creation form fails if the profile model has a required field."""
+            return 0 if obj is None else 1
+
     UserProfileAdmin.inlines += (ProfileInline,)
 except ProfileNotConfigured:
     pass

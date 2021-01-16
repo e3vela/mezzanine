@@ -9,11 +9,11 @@ try:
 except ImportError:
     from urllib import urlopen, urlencode
 
-from django.contrib.contenttypes.generic import GenericForeignKey
+from django.apps import apps
+from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.sites.models import Site
 from django.db import models
 from django.db.models.base import ModelBase
-from django.db.models.signals import post_save
 from django.template.defaultfilters import truncatewords_html
 from django.utils.encoding import python_2_unicode_compatible
 from django.utils.html import strip_tags
@@ -21,7 +21,8 @@ from django.utils.timesince import timesince
 from django.utils.timezone import now
 from django.utils.translation import ugettext, ugettext_lazy as _
 
-from mezzanine.core.fields import RichTextField
+from mezzanine.conf import settings
+from mezzanine.core.fields import RichTextField, OrderField
 from mezzanine.core.managers import DisplayableManager, CurrentSiteManager
 from mezzanine.generic.fields import KeywordsField
 from mezzanine.utils.html import TagCloser
@@ -33,6 +34,17 @@ from mezzanine.utils.urls import admin_url, slugify, unique_slug
 user_model_name = get_user_model_name()
 
 
+def wrapped_manager(klass):
+    if settings.USE_MODELTRANSLATION:
+        from modeltranslation.manager import MultilingualManager
+
+        class Mgr(MultilingualManager, klass):
+            pass
+        return Mgr()
+    else:
+        return klass()
+
+
 class SiteRelated(models.Model):
     """
     Abstract model for all things site-related. Adds a foreignkey to
@@ -41,7 +53,7 @@ class SiteRelated(models.Model):
     details.
     """
 
-    objects = CurrentSiteManager()
+    objects = wrapped_manager(CurrentSiteManager)
 
     class Meta:
         abstract = True
@@ -60,6 +72,7 @@ class SiteRelated(models.Model):
                 super(SiteRelated, self).save(*args, **kwargs)
             current_site = Site.objects.get(pk=current_site_id())
             self.sites.add(current_site)
+
         super(SiteRelated, self).save(*args, **kwargs)
 
 
@@ -71,7 +84,7 @@ class Slugged(SiteRelated):
     """
 
     title = models.CharField(_("Title"), max_length=500)
-    slug = models.CharField(_("URL"), max_length=2000, blank=True, null=True,
+    slug = models.CharField(_("URL"), max_length=2000, blank=True,
             help_text=_("Leave blank to have the URL auto-generated from "
                         "the title."))
 
@@ -104,7 +117,13 @@ class Slugged(SiteRelated):
         """
         Allows subclasses to implement their own slug creation logic.
         """
-        return slugify(self.title)
+        attr = "title"
+        if settings.USE_MODELTRANSLATION:
+            from modeltranslation.utils import build_localized_fieldname
+            attr = build_localized_fieldname(attr, settings.LANGUAGE_CODE)
+        # Get self.title_xx where xx is the default language, if any.
+        # Get self.title otherwise.
+        return slugify(getattr(self, attr, None) or self.title)
 
     def admin_link(self):
         return "<a href='%s'>%s</a>" % (self.get_absolute_url(),
@@ -145,7 +164,7 @@ class MetaData(models.Model):
         Accessor for the optional ``_meta_title`` field, which returns
         the string version of the instance if not provided.
         """
-        return self._meta_title or str(self)
+        return self._meta_title or getattr(self, "title", str(self))
 
     def description_from_content(self):
         """
@@ -156,13 +175,13 @@ class MetaData(models.Model):
         # Use the first RichTextField, or TextField if none found.
         for field_type in (RichTextField, models.TextField):
             if not description:
-                for field in self._meta.fields:
-                    if isinstance(field, field_type) and \
-                        field.name != "description":
+                for field in self._meta.get_fields():
+                    if (isinstance(field, field_type) and
+                            field.name != "description"):
                         description = getattr(self, field.name)
                         if description:
                             from mezzanine.core.templatetags.mezzanine_tags \
-                            import richtext_filters
+                                                    import richtext_filters
                             description = richtext_filters(description)
                             break
         # Fall back to the title if description couldn't be determined.
@@ -178,6 +197,10 @@ class MetaData(models.Model):
                 break
         else:
             description = truncatewords_html(description, 100)
+        try:
+            description = unicode(description)
+        except NameError:
+            pass  # Python 3.
         return description
 
 
@@ -207,6 +230,8 @@ CONTENT_STATUS_CHOICES = (
     (CONTENT_STATUS_PUBLISHED, _("Published")),
 )
 
+SHORT_URL_UNSET = "unset"
+
 
 SHORT_URL_UNSET = "unset"
 
@@ -224,14 +249,14 @@ class Displayable(Slugged, MetaData, TimeStamped):
             "on the site."))
     publish_date = models.DateTimeField(_("Published from"),
         help_text=_("With Published chosen, won't be shown until this time"),
-        blank=True, null=True)
+        blank=True, null=True, db_index=True)
     expiry_date = models.DateTimeField(_("Expires on"),
         help_text=_("With Published chosen, won't be shown after this time"),
         blank=True, null=True)
     short_url = models.URLField(blank=True, null=True)
     in_sitemap = models.BooleanField(_("Show in sitemap"), default=True)
 
-    objects = DisplayableManager()
+    objects = wrapped_manager(DisplayableManager)
     search_fields = {"keywords": 10, "title": 5}
 
     class Meta:
@@ -257,6 +282,16 @@ class Displayable(Slugged, MetaData, TimeStamped):
         return timesince(self.publish_date)
     publish_date_since.short_description = _("Published from")
 
+    def published(self):
+        """
+        For non-staff users, return True when status is published and
+        the publish and expiry dates fall before and after the
+        current date when specified.
+        """
+        return (self.status == CONTENT_STATUS_PUBLISHED and
+            (self.publish_date is None or self.publish_date <= now()) and
+            (self.expiry_date is None or self.expiry_date >= now()))
+
     def get_absolute_url(self):
         """
         Raise an error if called on a subclass without
@@ -271,6 +306,10 @@ class Displayable(Slugged, MetaData, TimeStamped):
         """
         Returns host + ``get_absolute_url`` - used by the various
         ``short_url`` mechanics below.
+<<<<<<< HEAD
+=======
+
+>>>>>>> f37cea4288f8b34f5a4fb47bd2c5ca2ad5c54722
         Technically we should use ``self.site.domain``, here, however
         if we were to invoke the ``short_url`` mechanics on a list of
         data (eg blog post list view), we'd trigger a db query per
@@ -285,6 +324,10 @@ class Displayable(Slugged, MetaData, TimeStamped):
         Generates the ``short_url`` attribute if the model does not
         already have one. Used by the ``set_short_url_for`` template
         tag and ``TweetableAdmin``.
+<<<<<<< HEAD
+=======
+
+>>>>>>> f37cea4288f8b34f5a4fb47bd2c5ca2ad5c54722
         If no sharing service is defined (bitly is the one implemented,
         but others could be by overriding ``generate_short_url``), the
         ``SHORT_URL_UNSET`` marker gets stored in the DB. In this case,
@@ -393,7 +436,7 @@ class Orderable(with_metaclass(OrderableBase, models.Model)):
     models that aren't ordered with respect to a particular field.
     """
 
-    _order = models.IntegerField(_("Order"), null=True)
+    _order = OrderField(_("Order"), null=True)
 
     class Meta:
         abstract = True
@@ -478,8 +521,8 @@ class Ownable(models.Model):
     Abstract model that provides ownership of an object for a user.
     """
 
-    user = models.ForeignKey(user_model_name, verbose_name=_("Author"),
-        related_name="%(class)ss")
+    user = models.ForeignKey(user_model_name, on_delete=models.CASCADE,
+        verbose_name=_("Author"), related_name="%(class)ss")
 
     class Meta:
         abstract = True
@@ -491,6 +534,56 @@ class Ownable(models.Model):
         return request.user.is_superuser or request.user.id == self.user_id
 
 
+class ContentTyped(models.Model):
+    """
+    Mixin for models that can be subclassed to create custom types.
+    In order to use them:
+
+    - Inherit model from ContentTyped.
+    - Call the set_content_model() method in the model's save() method.
+    - Inherit that model's ModelAdmin from ContentTypesAdmin.
+    - Include "admin/includes/content_typed_change_list.html" in the
+    change_list.html template.
+    """
+    content_model = models.CharField(editable=False, max_length=50, null=True)
+
+    class Meta:
+        abstract = True
+
+    @classmethod
+    def get_content_model_name(cls):
+        """
+        Return the name of the OneToOneField django automatically creates for
+        child classes in multi-table inheritance.
+        """
+        return cls._meta.object_name.lower()
+
+    @classmethod
+    def get_content_models(cls):
+        """ Return all subclasses of the concrete model.  """
+        concrete_model = base_concrete_model(ContentTyped, cls)
+        return [m for m in apps.get_models()
+                if m is not concrete_model and issubclass(m, concrete_model)]
+
+    def set_content_model(self):
+        """
+        Set content_model to the child class's related name, or None if this is
+        the base class.
+        """
+        if not self.content_model:
+            is_base_class = (
+                base_concrete_model(ContentTyped, self) == self.__class__)
+            self.content_model = (
+                None if is_base_class else self.get_content_model_name())
+
+    def get_content_model(self):
+        """
+        Return content model, or if this is the base class return it.
+        """
+        return (getattr(self, self.content_model) if self.content_model
+                else self)
+
+
 class SitePermission(models.Model):
     """
     Permission relationship between a user and a site that's
@@ -498,27 +591,11 @@ class SitePermission(models.Model):
     access.
     """
 
-    user = models.ForeignKey(user_model_name, verbose_name=_("Author"),
-        related_name="%(class)ss", unique=True)
+    user = models.OneToOneField(user_model_name, on_delete=models.CASCADE,
+        verbose_name=_("Author"), related_name="%(class)ss")
     sites = models.ManyToManyField("sites.Site", blank=True,
                                    verbose_name=_("Sites"))
 
     class Meta:
         verbose_name = _("Site permission")
         verbose_name_plural = _("Site permissions")
-
-
-def create_site_permission(sender, **kw):
-    sender_name = "%s.%s" % (sender._meta.app_label, sender._meta.object_name)
-    if sender_name.lower() != user_model_name.lower():
-        return
-    user = kw["instance"]
-    if user.is_staff and not user.is_superuser:
-        perm, created = SitePermission.objects.get_or_create(user=user)
-        if created or perm.sites.count() < 1:
-            perm.sites.add(current_site_id())
-
-# We don't specify the user model here, because with 1.5's custom
-# user models, everything explodes. So we check the name of it in
-# the signal.
-post_save.connect(create_site_permission)

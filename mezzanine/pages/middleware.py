@@ -1,20 +1,19 @@
 from __future__ import unicode_literals
 
-from django.contrib.auth import REDIRECT_FIELD_NAME
-from django.core.exceptions import ImproperlyConfigured, MiddlewareNotUsed
+from django.contrib.auth.views import redirect_to_login
+from django.core.exceptions import MiddlewareNotUsed
 from django.http import HttpResponse, Http404
-from django.shortcuts import redirect
-from django.utils.http import urlquote
 
 from mezzanine.conf import settings
-from mezzanine.pages import page_processors
+from mezzanine.pages import context_processors, page_processors
 from mezzanine.pages.models import Page
 from mezzanine.pages.views import page as page_view
-from mezzanine.utils.importing import import_dotted_path
+from mezzanine.utils.conf import middlewares_or_subclasses_installed
+from mezzanine.utils.deprecation import (MiddlewareMixin, is_authenticated)
 from mezzanine.utils.urls import path_to_slug
 
 
-class PageMiddleware(object):
+class PageMiddleware(MiddlewareMixin):
     """
     Adds a page to the template context for the current response.
 
@@ -35,7 +34,8 @@ class PageMiddleware(object):
     context, so that the current page is always available.
     """
 
-    def __init__(self):
+    def __init__(self, *args, **kwargs):
+        super(PageMiddleware, self).__init__(*args, **kwargs)
         if "mezzanine.pages" not in settings.INSTALLED_APPS:
             raise MiddlewareNotUsed
 
@@ -45,20 +45,13 @@ class PageMiddleware(object):
         Used in ``mezzanine.pages.views.page`` to ensure
         ``PageMiddleware`` or a subclass has been installed. We cache
         the result on the ``PageMiddleware._installed`` to only run
-        this once. Short path is to just check for the dotted path to
-        ``PageMiddleware`` in ``MIDDLEWARE_CLASSES`` - if not found,
-        we need to load each middleware class to match a subclass.
+        this once.
         """
         try:
             return cls._installed
         except AttributeError:
             name = "mezzanine.pages.middleware.PageMiddleware"
-            installed = name in settings.MIDDLEWARE_CLASSES
-            if not installed:
-                for name in settings.MIDDLEWARE_CLASSES:
-                    if issubclass(import_dotted_path(name), cls):
-                        installed = True
-                        break
+            installed = middlewares_or_subclasses_installed([name])
             setattr(cls, "_installed", installed)
             return installed
 
@@ -66,11 +59,6 @@ class PageMiddleware(object):
         """
         Per-request mechanics for the current page object.
         """
-
-        cp = "mezzanine.pages.context_processors.page"
-        if cp not in settings.TEMPLATE_CONTEXT_PROCESSORS:
-            raise ImproperlyConfigured("%s is missing from "
-                "settings.TEMPLATE_CONTEXT_PROCESSORS" % cp)
 
         # Load the closest matching page by slug, and assign it to the
         # request object. If none found, skip all further processing.
@@ -80,14 +68,13 @@ class PageMiddleware(object):
         if pages:
             page = pages[0]
             setattr(request, "page", page)
+            context_processors.page(request)
         else:
             return
 
         # Handle ``page.login_required``.
-        if page.login_required and not request.user.is_authenticated():
-            path = urlquote(request.get_full_path())
-            bits = (settings.LOGIN_URL, REDIRECT_FIELD_NAME, path)
-            return redirect("%s?%s=%s" % bits)
+        if page.login_required and not is_authenticated(request.user):
+            return redirect_to_login(request.get_full_path())
 
         # If the view isn't Mezzanine's page view, try to return the result
         # immediately. In the case of a 404 with an URL slug that matches a

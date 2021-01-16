@@ -1,15 +1,21 @@
 from __future__ import unicode_literals
 from future.builtins import str
 
+from datetime import datetime
 from uuid import uuid4
 
 from django import forms
-from django.forms.extras.widgets import SelectDateWidget
+try:
+    from django.forms.widgets import SelectDateWidget
+except ImportError:
+    # Django 1.8
+    from django.forms.extras.widgets import SelectDateWidget
+
+from django.forms.utils import to_current_timezone
 from django.utils.safestring import mark_safe
-from django.utils.translation import ugettext as _
 
 from mezzanine.conf import settings
-from mezzanine.core.models import Orderable
+from mezzanine.utils.static import static_lazy as static
 
 
 class Html5Mixin(object):
@@ -22,11 +28,13 @@ class Html5Mixin(object):
     def __init__(self, *args, **kwargs):
         super(Html5Mixin, self).__init__(*args, **kwargs)
         if hasattr(self, "fields"):
-            # Autofocus first field
-            first_field = next(iter(self.fields.values()))
-            first_field.widget.attrs["autofocus"] = ""
+            first_field = None
 
             for name, field in self.fields.items():
+                # Autofocus first non-hidden field
+                if not first_field and not field.widget.is_hidden:
+                    first_field = field
+                    first_field.widget.attrs["autofocus"] = ""
                 if settings.FORMS_USE_HTML5:
                     if isinstance(field, forms.EmailField):
                         self.fields[name].widget.input_type = "email"
@@ -36,12 +44,6 @@ class Html5Mixin(object):
                     self.fields[name].widget.attrs["required"] = ""
 
 
-_tinymce_js = ()
-if settings.GRAPPELLI_INSTALLED:
-    _tinymce_js = ("grappelli/tinymce/jscripts/tiny_mce/tiny_mce.js",
-                   settings.TINYMCE_SETUP_JS)
-
-
 class TinyMceWidget(forms.Textarea):
     """
     Setup the JS files and targetting CSS class for a textarea to
@@ -49,7 +51,10 @@ class TinyMceWidget(forms.Textarea):
     """
 
     class Media:
-        js = _tinymce_js
+        js = [static("mezzanine/tinymce/tinymce.min.js"),
+              static("mezzanine/tinymce/jquery.tinymce.min.js"),
+              static(settings.TINYMCE_SETUP_JS)]
+        css = {'all': [static("mezzanine/tinymce/tinymce.css")]}
 
     def __init__(self, *args, **kwargs):
         super(TinyMceWidget, self).__init__(*args, **kwargs)
@@ -61,6 +66,11 @@ class OrderWidget(forms.HiddenInput):
     Add up and down arrows for ordering controls next to a hidden
     form field.
     """
+
+    @property
+    def is_hidden(self):
+        return False
+
     def render(self, *args, **kwargs):
         rendered = super(OrderWidget, self).render(*args, **kwargs)
         arrows = ["<img src='%sadmin/img/admin/arrow-%s.gif' />" %
@@ -76,14 +86,8 @@ class DynamicInlineAdminForm(forms.ModelForm):
     """
 
     class Media:
-        js = ("mezzanine/js/jquery-ui-1.9.1.custom.min.js",
-              "mezzanine/js/admin/dynamic_inline.js",)
-
-    def __init__(self, *args, **kwargs):
-        super(DynamicInlineAdminForm, self).__init__(*args, **kwargs)
-        if issubclass(self._meta.model, Orderable):
-            self.fields["_order"] = forms.CharField(label=_("Order"),
-                widget=OrderWidget, required=False)
+        js = [static("mezzanine/js/%s" % settings.JQUERY_UI_FILENAME),
+              static("mezzanine/js/admin/dynamic_inline.js")]
 
 
 class SplitSelectDateTimeWidget(forms.SplitDateTimeWidget):
@@ -95,11 +99,25 @@ class SplitSelectDateTimeWidget(forms.SplitDateTimeWidget):
         time_widget = forms.TimeInput(attrs=attrs, format=time_format)
         forms.MultiWidget.__init__(self, (date_widget, time_widget), attrs)
 
+    def decompress(self, value):
+        if isinstance(value, str):
+            return value.split(" ", 1)
+        elif isinstance(value, datetime):
+            value = to_current_timezone(value)
+            return [value.date(), value.time().replace(microsecond=0)]
+        return [None, None]
+
+    def value_from_datadict(self, data, files, name):
+        return " ".join([x or "" for x in super(SplitSelectDateTimeWidget,
+            self).value_from_datadict(data, files, name)])
+
 
 class CheckboxSelectMultiple(forms.CheckboxSelectMultiple):
     """
     Wraps render with a CSS class for styling.
     """
+    dont_use_model_field_default_for_empty_data = True
+
     def render(self, *args, **kwargs):
         rendered = super(CheckboxSelectMultiple, self).render(*args, **kwargs)
         return mark_safe("<span class='multicheckbox'>%s</span>" % rendered)

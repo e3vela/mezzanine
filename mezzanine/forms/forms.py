@@ -6,7 +6,12 @@ from os.path import join, split
 from uuid import uuid4
 
 from django import forms
-from django.forms.extras import SelectDateWidget
+try:
+    from django.forms.widgets import SelectDateWidget
+except ImportError:
+    # Django 1.8
+    from django.forms.extras.widgets import SelectDateWidget
+
 from django.core.files.storage import FileSystemStorage
 from django.core.urlresolvers import reverse
 from django.template import Template
@@ -146,8 +151,6 @@ class FormForForm(forms.ModelForm):
             field_widget = fields.WIDGETS.get(field.field_type)
             field_args = {"label": field.label, "required": field.required,
                           "help_text": field.help_text}
-            if field.required and not field.help_text:
-                field_args["help_text"] = _("required")
             arg_names = field_class.__init__.__code__.co_varnames
             if "max_length" in arg_names:
                 field_args["max_length"] = settings.FORMS_FIELD_MAX_LENGTH
@@ -177,7 +180,7 @@ class FormForForm(forms.ModelForm):
                 try:
                     initial_val = initial[field_key]
                 except KeyError:
-                    initial_val = Template(field.default).render(context)
+                    initial_val = str(Template(field.default).render(context))
             if initial_val:
                 if field.is_a(*fields.MULTIPLE):
                     initial_val = split_choices(initial_val)
@@ -195,7 +198,7 @@ class FormForForm(forms.ModelForm):
             setattr(self.fields[field_key], "type",
                     field_class.__name__.lower())
             if (field.required and settings.FORMS_USE_HTML5 and
-                field.field_type != fields.CHECKBOX_MULTIPLE):
+                    field.field_type != fields.CHECKBOX_MULTIPLE):
                 self.fields[field_key].widget.attrs["required"] = ""
             if field.placeholder_text and not field.default:
                 text = field.placeholder_text
@@ -233,10 +236,10 @@ class FormForForm(forms.ModelForm):
     def email_to(self):
         """
         Return the value entered for the first field of type
-        ``forms.fields.EMAIL``.
+        ``forms.EmailField``.
         """
         for field in self.form_fields:
-            if field.is_a(fields.EMAIL):
+            if issubclass(fields.CLASSES[field.field_type], forms.EmailField):
                 return self.cleaned_data["field_%s" % field.id]
         return None
 
@@ -356,8 +359,9 @@ class EntriesForm(forms.Form):
 
         # Get the field entries for the given form and filter by entry_time
         # if specified.
-        field_entries = FieldEntry.objects.filter(entry__form=self.form
-            ).order_by("-entry__id").select_related("entry")
+        field_entries = FieldEntry.objects.filter(
+            entry__form=self.form).order_by(
+            "-entry__id").select_related("entry")
         if self.cleaned_data["field_0_filter"] == FILTER_CHOICE_BETWEEN:
             time_from = self.cleaned_data["field_0_from"]
             time_to = self.cleaned_data["field_0_to"]
